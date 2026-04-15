@@ -1,0 +1,163 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "User profile and settings",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "targetCalories": { "type": "number" },
+        "waterIntakeGoal": { "type": "number" },
+        "points": { "type": "number" },
+        "achievements": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "CommunityMessage": {
+      "title": "Community Message",
+      "description": "A message in the community chat",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "content": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "content", "timestamp"]
+    },
+    "FoodLog": {
+      "title": "Food Log",
+      "description": "A single food entry",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "calories": { "type": "number" },
+        "protein": { "type": "number" },
+        "carbs": { "type": "number" },
+        "fat": { "type": "number" },
+        "imageUrl": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "calories", "timestamp"]
+    },
+    "Habit": {
+      "title": "Habit",
+      "description": "A user habit",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "completed": { "type": "boolean" },
+        "streak": { "type": "number" },
+        "icon": { "type": "string" },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name"]
+    },
+    "AIFeedback": {
+      "title": "AI Feedback",
+      "description": "User feedback on AI responses",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "messageContent": { "type": "string" },
+        "feedback": { "type": "string", "enum": ["positive", "negative"] },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "messageContent", "feedback", "timestamp"]
+    },
+    "CommunityReport": {
+      "title": "Community Report",
+      "description": "A report of an inappropriate community message",
+      "type": "object",
+      "properties": {
+        "reporterUid": { "type": "string" },
+        "messageId": { "type": "string" },
+        "messageContent": { "type": "string" },
+        "messageAuthorUid": { "type": "string" },
+        "reason": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "reviewed", "dismissed"] }
+      },
+      "required": ["reporterUid", "messageId", "reason", "timestamp", "status"]
+    },
+    "PrivateChat": {
+      "title": "Private Chat",
+      "description": "A private chat between two users",
+      "type": "object",
+      "properties": {
+        "participants": { "type": "array", "items": { "type": "string" } },
+        "lastMessage": { "type": "string" },
+        "lastMessageTimestamp": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["participants", "updatedAt"]
+    },
+    "PrivateMessage": {
+      "title": "Private Message",
+      "description": "A message in a private chat",
+      "type": "object",
+      "properties": {
+        "senderUid": { "type": "string" },
+        "content": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["senderUid", "content", "timestamp"]
+    },
+    "AIChatMessage": {
+      "title": "AI Chat Message",
+      "description": "A message in the AI chat",
+      "type": "object",
+      "properties": {
+        "role": { "type": "string", "enum": ["user", "model"] },
+        "content": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["role", "content", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "UserProfile",
+      "description": "User profile data"
+    },
+    "/users/{uid}/foodLogs/{logId}": {
+      "schema": "FoodLog",
+      "description": "User food logs"
+    },
+    "/users/{uid}/habits/{habitId}": {
+      "schema": "Habit",
+      "description": "User habits"
+    },
+    "/users/{uid}/aiChatMessages/{messageId}": {
+      "schema": "AIChatMessage",
+      "description": "Messages in the AI chat"
+    },
+    "/communityMessages/{messageId}": {
+      "schema": "CommunityMessage",
+      "description": "Global community chat messages"
+    },
+    "/aiFeedback/{feedbackId}": {
+      "schema": "AIFeedback",
+      "description": "Feedback on AI responses"
+    },
+    "/communityReports/{reportId}": {
+      "schema": "CommunityReport",
+      "description": "Reports of inappropriate content"
+    },
+    "/chats/{chatId}": {
+      "schema": "PrivateChat",
+      "description": "Private chat metadata"
+    },
+    "/chats/{chatId}/messages/{messageId}": {
+      "schema": "PrivateMessage",
+      "description": "Messages in a private chat"
+    }
+  }
+}

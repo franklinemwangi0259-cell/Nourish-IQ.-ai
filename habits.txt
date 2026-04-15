@@ -1,0 +1,127 @@
+100:import type { FoodLog, Habit, ChatMessage, DailyStats, UserProfile, PublicProfile, CommunityMessage, Achievement, PrivateChat, PrivateMessage } from './types';
+103:const INITIAL_HABITS: Habit[] = [
+117:  { id: 'habit_10', title: 'Habit Master', description: 'Complete 10 habits in a row', icon: 'CheckCircle2', requirement: 'habit_streak_10', points: 200 },
+118:  { id: 'habit_30', title: 'Habit Legend', description: 'Complete 30 habits in a row', icon: 'CheckCircle2', requirement: 'habit_streak_30', points: 600 },
+134:export const calculateUserClass = (points: number, habits: Habit[]) => {
+135:  const maxStreak = habits.reduce((max, h) => Math.max(max, h.streak), 0);
+157:const HABIT_ICONS = ['CheckCircle2', 'Droplets', 'Zap', 'Coffee', 'Leaf', 'Flame', 'Activity', 'Book', 'Moon', 'Sun'];
+273:  const [activeTab, setActiveTab] = useState<'dashboard' | 'logs' | 'habits' | 'chat' | 'profile' | 'recipe' | 'community' | 'achievements'>('dashboard');
+275:  const [habits, setHabits] = useState<Habit[]>([]);
+309:  const [skippingHabit, setSkippingHabit] = useState<Habit | null>(null);
+311:  const [settingReminder, setSettingReminder] = useState<Habit | null>(null);
+313:  const [isAddingHabit, setIsAddingHabit] = useState(false);
+314:  const [newHabitName, setNewHabitName] = useState('');
+315:  const [newHabitIcon, setNewHabitIcon] = useState('CheckCircle2');
+328:  const userClassData = calculateUserClass(profile?.points || 0, habits);
+587:      const waterHabit = habits.find(h => h.name.toLowerCase().includes('water'));
+588:      if (waterHabit && waterHabit.streak >= 7 && !newAchievements.includes('water_7')) {
+595:      if (waterHabit && waterHabit.streak >= 20 && !newAchievements.includes('water_20')) {
+601:      // Habit Streak 10
+602:      const longStreakHabit = habits.find(h => h.streak >= 10);
+603:      if (longStreakHabit && !newAchievements.includes('habit_10')) {
+604:        newAchievements.push('habit_10');
+609:      // Habit Streak 30
+610:      const legendStreakHabit = habits.find(h => h.streak >= 30);
+611:      if (legendStreakHabit && !newAchievements.includes('habit_30')) {
+612:        newAchievements.push('habit_30');
+672:  }, [habits, profile, user, isAuthReady]);
+697:  // Sync Habits
+701:    const habitsRef = collection(db, 'users', user.uid, 'habits');
+702:    const unsubscribe = onSnapshot(habitsRef, (snapshot) => {
+704:        // Initialize default habits if none exist
+705:        INITIAL_HABITS.forEach(h => {
+706:          const { id, ...habitData } = h;
+707:          addDoc(habitsRef, { ...habitData, uid: user.uid, lastUpdated: Timestamp.now() })
+708:            .catch(e => handleFirestoreError(e, OperationType.CREATE, habitsRef.path));
+711:        const hList = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Habit));
+712:        setHabits(hList);
+714:    }, (error) => handleFirestoreError(error, OperationType.LIST, `users/${user.uid}/habits`));
+1013:  const addHabit = async () => {
+1014:    if (!newHabitName.trim() || !user) return;
+1016:    const habitsRef = collection(db, 'users', user.uid, 'habits');
+1017:    const newHabit = {
+1018:      name: newHabitName,
+1021:      icon: newHabitIcon,
+1027:      await addDoc(habitsRef, newHabit);
+1028:      setNewHabitName('');
+1029:      setNewHabitIcon('CheckCircle2');
+1030:      setIsAddingHabit(false);
+1033:      handleFirestoreError(error, OperationType.CREATE, habitsRef.path);
+1037:  const toggleHabit = async (habit: Habit) => {
+1039:    const habitRef = doc(db, 'users', user.uid, 'habits', habit.id);
+1041:      await updateDoc(habitRef, { 
+1042:        completed: !habit.completed, 
+1043:        streak: !habit.completed ? habit.streak + 1 : Math.max(0, habit.streak - 1),
+1047:      handleFirestoreError(error, OperationType.UPDATE, habitRef.path);
+1051:  const skipHabit = async (habit: Habit, reason: string) => {
+1053:    const habitRef = doc(db, 'users', user.uid, 'habits', habit.id);
+1057:      const skippedDates = habit.skippedDates || [];
+1058:      const skipReasons = habit.skipReasons || {};
+1061:        await updateDoc(habitRef, {
+1067:      setSkippingHabit(null);
+1070:      handleFirestoreError(error, OperationType.UPDATE, habitRef.path);
+1074:  const updateHabitReminder = async (habit: Habit, time: string) => {
+1076:    const habitRef = doc(db, 'users', user.uid, 'habits', habit.id);
+1078:      await updateDoc(habitRef, {
+1084:      handleFirestoreError(error, OperationType.UPDATE, habitRef.path);
+1163:        advice = await getComplexNutritionAdvice(foodLogs.slice(0, 20), habits, content, profile?.displayName, profile?.aiPersonality);
+1165:        advice = await getNutritionAdvice(foodLogs.slice(0, 20), habits, content, profile?.displayName, profile?.aiPersonality);
+1337:        <p className="text-slate-400 mb-8">Your AI-powered multimodal nutritional and habit tracking companion.</p>
+2172:          {activeTab === 'habits' && (
+2173:            <motion.div key="habits" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6 py-4">
+2176:                  <h2 className="font-display font-bold text-2xl text-white tracking-tight">Daily Habits</h2>
+2179:                      {habits.filter(h => h.completed).length}/{habits.length} Done
+2184:                  onClick={() => setIsAddingHabit(!isAddingHabit)}
+2187:                    isAddingHabit ? "bg-slate-800 text-slate-400" : "bg-emerald-500 text-white"
+2190:                  {isAddingHabit ? <X size={24} /> : <Plus size={24} />}
+2195:                {isAddingHabit && (
+2203:                      <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 mb-4">Add New Habit</h3>
+2210:                            const Icon = LucideIcons[newHabitIcon as keyof typeof LucideIcons] as any;
+2218:                          value={newHabitName}
+2219:                          onChange={(e) => setNewHabitName(e.target.value)}
+2220:                          onKeyDown={(e) => e.key === 'Enter' && addHabit()}
+2223:                          onClick={addHabit}
+2224:                          disabled={!newHabitName.trim()}
+2232:                          {HABIT_ICONS.map(iconName => {
+2237:                                onClick={() => setNewHabitIcon(iconName)}
+2240:                                  newHabitIcon === iconName ? "bg-emerald-500 text-white" : "bg-slate-800 text-slate-400 hover:text-white"
+2268:                {habits.map((habit, index) => (
+2276:                    key={habit.id} 
+2277:                    onClick={() => toggleHabit(habit)} 
+2279:                      scale: habit.completed ? [1, 1.02, 1] : 1,
+2284:                      habit.completed 
+2289:                    {habit.completed && (
+2319:                      <div className="flex items-center gap-5 flex-1" onClick={() => toggleHabit(habit)}>
+2322:                            rotate: habit.completed ? [0, -10, 10, 0] : 0,
+2323:                            scale: habit.completed ? 1.1 : 1
+2327:                            habit.completed 
+2333:                            const Icon = LucideIcons[habit.icon as keyof typeof LucideIcons] as any || CheckCircle2;
+2340:                            habit.completed ? "text-white" : "text-slate-300"
+2341:                          )}>{habit.name}</h3>
+2344:                              <TrendingUp size={12} className={habit.completed ? "text-emerald-500" : "text-slate-600"} />
+2345:                              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{habit.streak} day streak</span>
+2347:                            {habit.reminderTime && (
+2350:                                <span className="text-[10px] text-slate-600 font-bold">{habit.reminderTime}</span>
+2353:                            {habit.skippedDates?.includes(format(new Date(), 'yyyy-MM-dd')) && (
+2364:                        {!habit.completed && !habit.skippedDates?.includes(format(new Date(), 'yyyy-MM-dd')) && (
+2369:                                setSettingReminder(habit);
+2370:                                setReminderTime(habit.reminderTime || '08:00');
+2380:                                setSkippingHabit(habit);
+2392:                            toggleHabit(habit);
+2395:                            scale: habit.completed ? [1, 1.2, 1] : 1,
+2396:                            backgroundColor: habit.completed ? "rgb(16, 185, 129)" : "rgba(15, 23, 42, 0.5)"
+2400:                            habit.completed 
+2405:                          {habit.completed ? (
+2421:                      {skippingHabit?.id === habit.id && (
+2440:                              onClick={() => skipHabit(habit, skipReason)}
+2446:                              onClick={() => setSkippingHabit(null)}
+2458:                      {settingReminder?.id === habit.id && (
+2476:                              onClick={() => updateHabitReminder(habit, reminderTime)}
+2495:              {habits.length > 0 && (
+2506:                      <h4 className="text-sm font-bold text-white">AI Habit Coach</h4>
+2513:                      sendMessage("Analyze my habits and give me some motivational advice for habit formation.");
+2772:                  { label: "Habit Advice", prompt: "Analyze my habits and give me some motivational advice for habit formation." },
+2775:                  { label: "Streak Tips", prompt: "How can I maintain my habit streaks more effectively?" }
+3297:                      onClick={() => handleShare("My Progress on Nourish IQ", `I've earned ${profile?.points || 0} points on Nourish IQ! Join me in tracking your nutrition and habits.`)}
+3561:            { id: 'habits', icon: CheckCircle2, label: 'Habits' },
+3687:                  const isUnlocked = (profile?.points || 0) >= c.minPoints && (habits.reduce((max, h) => Math.max(max, h.streak), 0) >= c.minStreak);

@@ -1,0 +1,5 @@
+{
+  "name": "Nourish IQ",
+  "description": "AI-powered multimodal nutritional and habit tracking system with real-time analysis and a smart chatbot companion.",
+  "requestFramePermissions": ["camera", "microphone"]
+}
