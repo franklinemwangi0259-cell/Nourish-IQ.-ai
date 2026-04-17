@@ -10,9 +10,16 @@
 //   - displayName: string (optional)
 //   - photoURL: string (optional, url)
 //   - targetCalories: number (optional)
+//   - targetProtein: number (optional)
+//   - targetCarbs: number (optional)
+//   - targetFat: number (optional)
+//   - targetWeight: number (optional)
+//   - targetBodyFat: number (optional)
 //   - waterIntakeGoal: number (optional)
 //   - points: number (optional)
 //   - achievements: list (optional)
+//   - badges: list (optional)
+//   - class: string (optional)
 //   - aiPersonality: string (optional)
 //   - friends: list (optional)
 //   - friendRequests: list (optional)
@@ -108,16 +115,23 @@ service cloud.firestore {
     }
 
     function isValidUser(data) {
-      return data.keys().hasOnly(['uid', 'email', 'displayName', 'photoURL', 'targetCalories', 'waterIntakeGoal', 'points', 'achievements', 'aiPersonality', 'friends', 'friendRequests', 'hasCompletedOnboarding', 'role']) &&
+      return data.keys().hasOnly(['uid', 'email', 'displayName', 'photoURL', 'targetCalories', 'targetProtein', 'targetCarbs', 'targetFat', 'targetWeight', 'targetBodyFat', 'waterIntakeGoal', 'points', 'achievements', 'badges', 'class', 'aiPersonality', 'friends', 'friendRequests', 'hasCompletedOnboarding', 'role']) &&
              data.keys().hasAll(['uid', 'email']) &&
              data.uid == request.auth.uid &&
              isValidEmail(data.email) &&
              (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 200)) &&
              (!('photoURL' in data) || isValidUrl(data.photoURL)) &&
              (!('targetCalories' in data) || (data.targetCalories is number && data.targetCalories >= 0 && data.targetCalories < 20000)) &&
+             (!('targetProtein' in data) || (data.targetProtein is number && data.targetProtein >= 0 && data.targetProtein < 5000)) &&
+             (!('targetCarbs' in data) || (data.targetCarbs is number && data.targetCarbs >= 0 && data.targetCarbs < 5000)) &&
+             (!('targetFat' in data) || (data.targetFat is number && data.targetFat >= 0 && data.targetFat < 5000)) &&
+             (!('targetWeight' in data) || (data.targetWeight is number && data.targetWeight >= 0 && data.targetWeight < 1000)) &&
+             (!('targetBodyFat' in data) || (data.targetBodyFat is number && data.targetBodyFat >= 0 && data.targetBodyFat < 100)) &&
              (!('waterIntakeGoal' in data) || (data.waterIntakeGoal is number && data.waterIntakeGoal >= 0 && data.waterIntakeGoal < 20000)) &&
              (!('points' in data) || (data.points is number && data.points >= 0)) &&
              (!('achievements' in data) || (data.achievements is list && data.achievements.size() < 1000)) &&
+             (!('badges' in data) || (data.badges is list && data.badges.size() < 1000)) &&
+             (!('class' in data) || (data.class is string && data.class in ['amateur', 'novice', 'beginner', 'intermediate', 'advanced', 'master'])) &&
              (!('aiPersonality' in data) || (data.aiPersonality is string && data.aiPersonality.size() < 50)) &&
              (!('friends' in data) || (data.friends is list && data.friends.size() < 5000)) &&
              (!('friendRequests' in data) || (data.friendRequests is list && data.friendRequests.size() < 5000)) &&
@@ -126,13 +140,15 @@ service cloud.firestore {
     }
 
     function isValidPublicProfile(data) {
-      return data.keys().hasOnly(['uid', 'displayName', 'photoURL', 'points', 'achievements', 'friends']) &&
+      return data.keys().hasOnly(['uid', 'displayName', 'photoURL', 'points', 'achievements', 'badges', 'class', 'friends']) &&
              data.keys().hasAll(['uid', 'displayName', 'photoURL']) &&
              data.uid == request.auth.uid &&
              data.displayName is string && data.displayName.size() < 200 &&
              isValidUrl(data.photoURL) &&
              (!('points' in data) || (data.points is number && data.points >= 0)) &&
              (!('achievements' in data) || (data.achievements is list)) &&
+             (!('badges' in data) || (data.badges is list)) &&
+             (!('class' in data) || (data.class is string && data.class in ['amateur', 'novice', 'beginner', 'intermediate', 'advanced', 'master'])) &&
              (!('friends' in data) || (data.friends is list));
     }
 
@@ -265,9 +281,12 @@ service cloud.firestore {
       }
     }
 
-    match /users_public/{userId} {
+    match /users_public {
       allow read: if isAuthenticated();
-      allow create, update: if isOwner(userId) && isValidPublicProfile(request.resource.data);
+      match /{userId} {
+        allow read: if isAuthenticated();
+        allow create, update: if isOwner(userId) && isValidPublicProfile(request.resource.data);
+      }
     }
 
     match /communityMessages/{messageId} {

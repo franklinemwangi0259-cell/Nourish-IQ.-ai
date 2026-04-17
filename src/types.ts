@@ -16,15 +16,29 @@ export interface FoodLog {
   energy?: number;
 }
 
+export interface Badge {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+}
+
 export interface UserProfile {
   uid: string;
   email: string;
   displayName: string;
   photoURL: string;
   targetCalories: number;
+  targetProtein: number;
+  targetCarbs: number;
+  targetFat: number;
+  targetWeight: number;
+  targetBodyFat: number;
   waterIntakeGoal: number;
   points: number;
   achievements: string[];
+  badges: Badge[];
+  class: 'amateur' | 'novice' | 'beginner' | 'intermediate' | 'advanced' | 'master';
   aiPersonality?: 'empathetic' | 'strict' | 'scientific' | 'playful';
   friends?: string[];
   friendRequests?: string[];
@@ -37,6 +51,8 @@ export interface PublicProfile {
   photoURL: string;
   points: number;
   achievements: string[];
+  badges: Badge[];
+  class: 'amateur' | 'novice' | 'beginner' | 'intermediate' | 'advanced' | 'master';
   friends?: string[];
 }
 
@@ -88,6 +104,9 @@ export interface DailyStats {
   vitamins?: string[];
   waterIntake: number;
   targetCalories: number;
+  targetProtein: number;
+  targetCarbs: number;
+  targetFat: number;
   waterIntakeGoal: number;
 }
 

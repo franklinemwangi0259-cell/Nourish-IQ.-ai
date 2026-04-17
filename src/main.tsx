@@ -2,14 +2,16 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { registerSW } from 'virtual:pwa-register';
 
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(err => {
-      console.log('ServiceWorker registration failed: ', err);
-    });
-  });
-}
+const updateSW = registerSW({
+  onNeedRefresh() {
+    // Optionally show a prompt to user
+  },
+  onOfflineReady() {
+    console.log('App is ready to work offline');
+  },
+});
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

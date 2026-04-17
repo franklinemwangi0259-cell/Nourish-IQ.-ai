@@ -21,14 +21,22 @@ export function OnboardingWizard({ profile, user }: OnboardingWizardProps) {
   const handleComplete = async () => {
     setIsSaving(true);
     try {
+      // Calculate default macro goals based on calorie target
+      // Standard split: 30% Protein, 40% Carbs, 30% Fat
+      const targetProtein = Math.round((targetCalories * 0.3) / 4);
+      const targetCarbs = Math.round((targetCalories * 0.4) / 4);
+      const targetFat = Math.round((targetCalories * 0.3) / 9);
+
       const userRef = doc(db, 'users', user.uid);
       await updateDoc(userRef, {
         targetCalories,
+        targetProtein,
+        targetCarbs,
+        targetFat,
         waterIntakeGoal,
         aiPersonality,
         hasCompletedOnboarding: true
       });
-      // Also update public profile if needed, but usually not required for these private fields
     } catch (error) {
       console.error("Error saving onboarding data:", error);
     } finally {
@@ -44,7 +52,8 @@ export function OnboardingWizard({ profile, user }: OnboardingWizardProps) {
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-500/20 blur-[120px] rounded-full mix-blend-screen" />
       </div>
 
-      <div className="w-full max-w-md relative z-10 glass-panel rounded-[2.5rem] p-8 border border-white/10 shadow-2xl">
+      <div className="w-full max-w-md relative z-10 tech-card border-white/10 group">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-[60px] rounded-full -mr-10 -mt-10 group-hover:bg-emerald-500/20 transition-colors pointer-events-none" />
         <AnimatePresence mode="wait">
           {step === 1 && (
             <motion.div
@@ -58,8 +67,8 @@ export function OnboardingWizard({ profile, user }: OnboardingWizardProps) {
                 <div className="w-20 h-20 bg-gradient-to-br from-emerald-400 to-teal-600 rounded-3xl mx-auto flex items-center justify-center shadow-xl shadow-emerald-500/20 mb-6">
                   <Activity size={40} className="text-white" />
                 </div>
-                <h1 className="text-3xl font-display font-bold text-white">Welcome to Nourish IQ</h1>
-                <p className="text-slate-400">Let's set up your baseline goals to personalize your experience.</p>
+                <h1 className="text-3xl font-display font-black text-white uppercase tracking-tight">Welcome to Nourish <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-500">IQ</span></h1>
+                <p className="text-slate-400 font-medium">Your baseline goals to personalize the experience.</p>
               </div>
 
               <div className="space-y-6">
@@ -71,7 +80,7 @@ export function OnboardingWizard({ profile, user }: OnboardingWizardProps) {
                     type="number"
                     value={targetCalories}
                     onChange={(e) => setTargetCalories(Number(e.target.value))}
-                    className="w-full bg-slate-900/50 border border-white/10 rounded-2xl px-5 py-4 text-lg text-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                    className="w-full bg-slate-950/50 border border-white/10 rounded-2xl px-5 py-4 text-lg text-white focus:ring-2 focus:ring-emerald-500/50 outline-none transition-all shadow-inner"
                   />
                 </div>
 
@@ -83,7 +92,7 @@ export function OnboardingWizard({ profile, user }: OnboardingWizardProps) {
                     type="number"
                     value={waterIntakeGoal}
                     onChange={(e) => setWaterIntakeGoal(Number(e.target.value))}
-                    className="w-full bg-slate-900/50 border border-white/10 rounded-2xl px-5 py-4 text-lg text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                    className="w-full bg-slate-950/50 border border-white/10 rounded-2xl px-5 py-4 text-lg text-white focus:ring-2 focus:ring-blue-500/50 outline-none transition-all shadow-inner"
                   />
                 </div>
               </div>
@@ -109,8 +118,8 @@ export function OnboardingWizard({ profile, user }: OnboardingWizardProps) {
                 <div className="w-20 h-20 bg-gradient-to-br from-purple-400 to-indigo-600 rounded-3xl mx-auto flex items-center justify-center shadow-xl shadow-purple-500/20 mb-6">
                   <Brain size={40} className="text-white" />
                 </div>
-                <h2 className="text-3xl font-display font-bold text-white">Choose Your AI</h2>
-                <p className="text-slate-400">How would you like NORI AI to interact with you?</p>
+                <h2 className="text-3xl font-display font-black text-white uppercase tracking-tight">Choose Your <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-500">AI</span></h2>
+                <p className="text-slate-400 font-medium">How should NORI interact with you?</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -124,13 +133,16 @@ export function OnboardingWizard({ profile, user }: OnboardingWizardProps) {
                     key={p.id}
                     onClick={() => setAiPersonality(p.id as any)}
                     className={cn(
-                      "p-4 rounded-2xl border text-left transition-all flex flex-col gap-2",
+                      "p-4 rounded-3xl border text-left transition-all flex flex-col gap-2 relative overflow-hidden group/personality",
                       aiPersonality === p.id
-                        ? "bg-emerald-500/20 border-emerald-500 shadow-lg shadow-emerald-500/10"
-                        : "bg-slate-900/50 border-white/5 hover:border-white/20"
+                        ? "bg-emerald-500/10 border-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.1)] ring-1 ring-emerald-500/20"
+                        : "bg-slate-950/30 border-white/5 hover:border-white/20"
                     )}
                   >
-                    <p.icon size={24} className={p.color} />
+                    {aiPersonality === p.id && (
+                      <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-500/5 blur-2xl rounded-full" />
+                    )}
+                    <p.icon size={24} className={cn("transition-all", aiPersonality === p.id ? p.color : "text-slate-500")} />
                     <div>
                       <h3 className="font-bold text-white">{p.label}</h3>
                       <p className="text-[10px] text-slate-400 mt-1">{p.desc}</p>

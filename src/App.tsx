@@ -54,7 +54,9 @@ import {
   Crown,
   Flame,
   Target,
-  GripVertical
+  GripVertical,
+  Refrigerator,
+  Clock
 } from 'lucide-react';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { 
@@ -136,10 +138,11 @@ const ACHIEVEMENTS: Achievement[] = [
 
 export const USER_CLASSES = [
   { id: 'novice', name: 'Novice Class', minPoints: 0, minStreak: 0, icon: 'Star', color: 'text-slate-400', bg: 'bg-slate-400/10', border: 'border-slate-400/20' },
-  { id: 'beginner', name: 'Beginner Class', minPoints: 1000, minStreak: 5, icon: 'Shield', color: 'text-blue-400', bg: 'bg-blue-400/10', border: 'border-blue-400/20' },
-  { id: 'intermediate', name: 'Intermediate Class', minPoints: 3000, minStreak: 14, icon: 'Swords', color: 'text-purple-400', bg: 'bg-purple-400/10', border: 'border-purple-400/20' },
-  { id: 'advanced', name: 'Advanced Class', minPoints: 7500, minStreak: 30, icon: 'Crown', color: 'text-amber-400', bg: 'bg-amber-400/10', border: 'border-amber-400/20' },
-  { id: 'master', name: 'Master Class', minPoints: 15000, minStreak: 60, icon: 'Flame', color: 'text-red-400', bg: 'bg-red-400/10', border: 'border-red-400/20' },
+  { id: 'amateur', name: 'Amateur Class', minPoints: 100, minStreak: 1, icon: 'User', color: 'text-slate-500', bg: 'bg-slate-500/10', border: 'border-slate-500/20' },
+  { id: 'beginner', name: 'Beginner Class', minPoints: 300, minStreak: 3, icon: 'Shield', color: 'text-blue-400', bg: 'bg-blue-400/10', border: 'border-blue-400/20' },
+  { id: 'intermediate', name: 'Intermediate Class', minPoints: 800, minStreak: 7, icon: 'Swords', color: 'text-purple-400', bg: 'bg-purple-400/10', border: 'border-purple-400/20' },
+  { id: 'advanced', name: 'Advanced Class', minPoints: 2000, minStreak: 15, icon: 'Crown', color: 'text-amber-400', bg: 'bg-amber-400/10', border: 'border-amber-400/20' },
+  { id: 'master', name: 'Master Class', minPoints: 5000, minStreak: 30, icon: 'Flame', color: 'text-red-400', bg: 'bg-red-400/10', border: 'border-red-400/20' },
 ];
 
 export const calculateUserClass = (points: number, habits: Habit[]) => {
@@ -184,6 +187,9 @@ const DEFAULT_STATS: DailyStats = {
   vitamins: [],
   waterIntake: 0,
   targetCalories: 2000,
+  targetProtein: 150,
+  targetCarbs: 200,
+  targetFat: 70,
   waterIntakeGoal: 2000,
 };
 
@@ -312,8 +318,16 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 }
 
 const handleFirestoreError = (error: unknown, operationType: OperationType, path: string | null) => {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  
+  // Check if it's an offline error
+  if (errorMessage.includes('client is offline') || errorMessage.includes('Could not reach Cloud Firestore backend')) {
+    console.warn('Firestore offline:', errorMessage);
+    return; // Don't throw, just log and continue
+  }
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errorMessage,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -385,6 +399,7 @@ export default function App() {
 
 function NourishIQ() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
+  const isAdmin = user?.email === 'franklinemwangi0259@gmail.com';
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'logs' | 'habits' | 'chat' | 'profile' | 'recipe' | 'community' | 'achievements'>('dashboard');
@@ -399,7 +414,12 @@ function NourishIQ() {
   ]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isChatting, setIsChatting] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [showCamera, setShowCamera] = useState(false);
+  const [cameraFacingMode, setCameraFacingMode] = useState<'user' | 'environment'>('environment');
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [torchEnabled, setTorchEnabled] = useState<boolean>(false);
+  const streamRef = useRef<MediaStream | null>(null);
   const [recipeInput, setRecipeInput] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
   const [isSigningIn, setIsSigningIn] = useState(false);
@@ -446,7 +466,6 @@ function NourishIQ() {
   const [hasRated, setHasRated] = useState(false);
   const [pointsToast, setPointsToast] = useState<{points: number, reason: string} | null>(null);
   const [shareContent, setShareContent] = useState<{title: string, text: string} | null>(null);
-  const [cameraFacingMode, setCameraFacingMode] = useState<'user' | 'environment'>('environment');
   const [viewingLog, setViewingLog] = useState<FoodLog | null>(null);
   
   // New Features State
@@ -459,6 +478,9 @@ function NourishIQ() {
   const [communityGoal, setCommunityGoal] = useState({ current: 4500, target: 10000, title: "Community Protein Push", description: "Let's hit 10,000g of protein together this week!", bossName: "The Carb Crusher", bossHealth: 55 });
   const [isProactiveInsightLoading, setIsProactiveInsightLoading] = useState(false);
   const [proactiveInsight, setProactiveInsight] = useState<string | null>(null);
+  const [recipeTab, setRecipeTab] = useState<'analyze' | 'fridge'>('analyze');
+
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
 
   const userClassData = calculateUserClass(profile?.points || 0, habits);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -601,6 +623,18 @@ function NourishIQ() {
     });
   }, []);
 
+  // Online/Offline Listener
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   // Sync User Profile
   useEffect(() => {
     if (!user) return;
@@ -616,14 +650,22 @@ function NourishIQ() {
           displayName: user.displayName || 'User',
           photoURL: user.photoURL || AVATARS[0],
           targetCalories: 2000,
+          targetProtein: 150,
+          targetCarbs: 200,
+          targetFat: 70,
+          targetWeight: 70,
+          targetBodyFat: 20,
           waterIntakeGoal: 2000,
           points: 0,
           achievements: [],
+          badges: [],
+          class: 'novice',
           aiPersonality: 'empathetic',
           hasCompletedOnboarding: false
         };
         setDoc(userRef, newProfile).then(() => {
           sendWelcomeEmail(user.email || '', user.displayName || 'User');
+          syncPublicProfile(newProfile);
           
           // Add a welcome message to the AI chat
           const messagesRef = collection(db, 'users', user.uid, 'aiChatMessages');
@@ -747,7 +789,7 @@ function NourishIQ() {
     return unsubscribe;
   }, [user, isAuthReady]);
 
-  // Sync Private Messages for Active Chat
+  // Sync Inbox for Active Chat
   useEffect(() => {
     if (!user || !isAuthReady || !activeChat) {
       setPrivateMessages([]);
@@ -778,7 +820,7 @@ function NourishIQ() {
 
   // Sync Leaderboard
   useEffect(() => {
-    if (!isAuthReady) return;
+    if (!isAuthReady || !user) return;
     const usersRef = collection(db, 'users_public');
     const q = query(usersRef, orderBy('points', 'desc'), limit(10));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -995,6 +1037,9 @@ function NourishIQ() {
       ...totals,
       waterIntake: prev.waterIntake,
       targetCalories: profile?.targetCalories || 2000,
+      targetProtein: profile?.targetProtein || 150,
+      targetCarbs: profile?.targetCarbs || 200,
+      targetFat: profile?.targetFat || 70,
       waterIntakeGoal: profile?.waterIntakeGoal || 2000,
     }));
   }, [foodLogs, profile]);
@@ -1035,7 +1080,9 @@ function NourishIQ() {
         displayName: profileData.displayName || 'User',
         photoURL: profileData.photoURL || AVATARS[0],
         points: profileData.points || 0,
-        achievements: profileData.achievements || []
+        achievements: profileData.achievements || [],
+        badges: profileData.badges || [],
+        class: profileData.class || 'novice'
       });
     } catch (error) {
       console.error("Error syncing public profile:", error);
@@ -1072,6 +1119,10 @@ function NourishIQ() {
 
   const handleRecipeAnalysis = async () => {
     if (!recipeInput.trim() || !user || !profile) return;
+    if (!navigator.onLine) {
+      alert("You are offline. Please connect to the internet to analyze recipes.");
+      return;
+    }
     setIsAnalyzing(true);
     try {
       const analysis = await analyzeRecipe(recipeInput);
@@ -1096,6 +1147,26 @@ function NourishIQ() {
       handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/foodLogs`);
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  const handleFridgeSuggestion = async () => {
+    if (!fridgeIngredients.trim() || !user) return;
+    if (!navigator.onLine) {
+      alert("You are offline. Please connect to the internet to get recipe suggestions.");
+      return;
+    }
+    setIsGeneratingRecipe(true);
+    try {
+      const suggestion = await generateRecipeFromIngredients(fridgeIngredients);
+      setGeneratedRecipe(suggestion);
+      
+      // Award points for using the fridge feature
+      await awardPoints(2, "Used Fridge Recipe Generator");
+    } catch (error) {
+      console.error("Error generating recipe:", error);
+    } finally {
+      setIsGeneratingRecipe(false);
     }
   };
 
@@ -1251,16 +1322,30 @@ function NourishIQ() {
   const startCamera = async (facingMode: 'user' | 'environment' = cameraFacingMode) => {
     setShowCamera(true);
     // Stop any existing tracks first
-    if (videoRef.current?.srcObject) {
-      (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
     }
     
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode } 
-      });
+      const constraints: MediaStreamConstraints = { 
+        video: { 
+          facingMode,
+          advanced: [{ torch: torchEnabled } as any]
+        } 
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
       if (videoRef.current) videoRef.current.srcObject = stream;
       setCameraFacingMode(facingMode);
+      
+      // Apply zoom if supported
+      const track = stream.getVideoTracks()[0];
+      const capabilities = track.getCapabilities ? track.getCapabilities() : null;
+      if (capabilities && (capabilities as any).zoom) {
+        await track.applyConstraints({
+          advanced: [{ zoom: zoomLevel } as any]
+        });
+      }
     } catch (err) {
       console.error("Error accessing camera:", err);
       setShowCamera(false);
@@ -1272,9 +1357,42 @@ function NourishIQ() {
     startCamera(newMode);
   };
 
+  const toggleTorch = async () => {
+    if (!streamRef.current) return;
+    const track = streamRef.current.getVideoTracks()[0];
+    const newTorchState = !torchEnabled;
+    try {
+      await track.applyConstraints({
+        advanced: [{ torch: newTorchState } as any]
+      });
+      setTorchEnabled(newTorchState);
+    } catch (err) {
+      console.error("Error toggling torch:", err);
+    }
+  };
+
+  const setZoom = async (zoom: number) => {
+    if (!streamRef.current) return;
+    const track = streamRef.current.getVideoTracks()[0];
+    try {
+      const capabilities = (track as any).getCapabilities?.();
+      let finalZoom = zoom;
+      if (capabilities && capabilities.zoom) {
+        finalZoom = Math.max(capabilities.zoom.min, Math.min(capabilities.zoom.max, zoom));
+      }
+      await track.applyConstraints({
+        advanced: [{ zoom: finalZoom } as any]
+      });
+      setZoomLevel(finalZoom);
+    } catch (err) {
+      console.error("Error setting zoom:", err);
+    }
+  };
+
   const stopCamera = () => {
-    if (videoRef.current?.srcObject) {
-      (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
     }
     setShowCamera(false);
   };
@@ -1282,6 +1400,11 @@ function NourishIQ() {
   const processImage = async (base64Image: string) => {
     if (!user || !profile) return;
     
+    if (!navigator.onLine) {
+      alert("You are offline. Please connect to the internet to analyze food images.");
+      return;
+    }
+
     setIsAnalyzing(true);
     setShowCamera(false);
     
@@ -1365,9 +1488,27 @@ function NourishIQ() {
     if (!user || !profile) return;
     const userRef = doc(db, 'users', user.uid);
     try {
-      await updateDoc(userRef, {
-        points: Math.max(0, (profile.points || 0) + points)
-      });
+      const newPoints = Math.max(0, (profile.points || 0) + points);
+      const { currentClass } = calculateUserClass(newPoints, habits);
+      
+      const updateData: Partial<UserProfile> = {
+        points: newPoints,
+        class: currentClass.id as 'amateur' | 'novice' | 'beginner' | 'intermediate' | 'advanced' | 'master'
+      };
+
+      // Check for badge unlocks
+      const newBadges = [...(profile.badges || [])];
+      if (newPoints >= 100 && !newBadges.find(b => b.id === 'novice')) {
+        newBadges.push({ id: 'novice', title: 'Novice', description: 'Earned 100 points', icon: 'Award' });
+      }
+      if (newPoints >= 500 && !newBadges.find(b => b.id === 'pro')) {
+        newBadges.push({ id: 'pro', title: 'Pro', description: 'Earned 500 points', icon: 'Star' });
+      }
+      updateData.badges = newBadges;
+
+      await updateDoc(userRef, updateData);
+      await syncPublicProfile({ ...profile, ...updateData });
+      
       if (points > 0) {
         setPointsToast({ points, reason });
         setTimeout(() => setPointsToast(null), 3000);
@@ -1572,6 +1713,10 @@ function NourishIQ() {
   };
 
   const handleSpeak = async (text: string) => {
+    if (!navigator.onLine) {
+      console.warn("TTS is not available offline.");
+      return;
+    }
     try {
       const base64Audio = await generateSpeech(text);
       if (base64Audio) {
@@ -1586,6 +1731,12 @@ function NourishIQ() {
   const sendMessage = async (content: string) => {
     if (!content.trim() || !user) return;
     
+    if (!navigator.onLine) {
+      setChatMessages(prev => [...prev, { role: 'user', content, timestamp: new Date() }]);
+      setChatMessages(prev => [...prev, { role: 'model', content: "I'm sorry, but I need an internet connection to chat. Please check your connection and try again.", timestamp: new Date() }]);
+      return;
+    }
+
     const messagesRef = collection(db, 'users', user.uid, 'aiChatMessages');
     
     try {
@@ -1650,10 +1801,10 @@ function NourishIQ() {
       if (userSnap.exists()) {
         setViewingProfile(userSnap.data() as PublicProfile);
       } else {
-        setViewingProfile({ uid, displayName, photoURL, points: 0, achievements: [] });
+        setViewingProfile({ uid, displayName, photoURL, points: 0, achievements: [], badges: [], class: 'novice' });
       }
     } catch (error) {
-      setViewingProfile({ uid, displayName, photoURL, points: 0, achievements: [] });
+      setViewingProfile({ uid, displayName, photoURL, points: 0, achievements: [], badges: [], class: 'novice' });
     }
   };
 
@@ -1663,11 +1814,17 @@ function NourishIQ() {
     try {
       await updateDoc(userRef, {
         targetCalories: profile.targetCalories,
+        targetProtein: profile.targetProtein || 150,
+        targetCarbs: profile.targetCarbs || 200,
+        targetFat: profile.targetFat || 70,
+        targetWeight: profile.targetWeight || 70,
+        targetBodyFat: profile.targetBodyFat || 20,
         waterIntakeGoal: profile.waterIntakeGoal,
         displayName: profile.displayName,
         photoURL: profile.photoURL,
         aiPersonality: profile.aiPersonality || 'empathetic'
       });
+      await syncPublicProfile(profile);
       setActiveTab('dashboard');
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, userRef.path);
@@ -1688,6 +1845,10 @@ function NourishIQ() {
 
   const handleSignIn = async () => {
     if (isSigningIn) return;
+    if (!navigator.onLine) {
+      setAuthError("You are offline. Please connect to the internet to sign in.");
+      return;
+    }
     setAuthError(null);
     setIsSigningIn(true);
     try {
@@ -1711,6 +1872,10 @@ function NourishIQ() {
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSigningIn || !email || !password) return;
+    if (!navigator.onLine) {
+      setAuthError("You are offline. Please connect to the internet to sign in.");
+      return;
+    }
     setAuthError(null);
     setIsSigningIn(true);
     try {
@@ -1772,8 +1937,8 @@ function NourishIQ() {
             <Brain size={44} className="relative z-10 drop-shadow-lg" />
           </div>
         </motion.div>
-        <h1 className="text-4xl font-display font-bold tracking-tight mb-4">Nourish <span className="text-emerald-500">IQ</span></h1>
-        <p className="text-slate-400 mb-8">Your AI-powered multimodal nutritional and habit tracking companion.</p>
+        <h1 className="text-4xl font-display font-black tracking-tight mb-4 text-white drop-shadow-sm">Nourish <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-500">IQ</span></h1>
+        <p className="text-slate-400 mb-8 font-medium opacity-80 leading-relaxed">Your AI-powered multimodal nutritional and habit tracking companion.</p>
         
         {authError && (
           <motion.div 
@@ -1860,7 +2025,9 @@ function NourishIQ() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col max-w-md mx-auto bg-slate-950 text-slate-100 shadow-2xl relative overflow-hidden border-x border-slate-900">
+    <div className="min-h-screen flex flex-col max-w-md mx-auto bg-slate-950 text-slate-100 shadow-2xl relative overflow-hidden border-x border-slate-900 selection:bg-emerald-500/30">
+      <div className="atmosphere-bg" />
+      
       {/* Header */}
       <header className="p-6 flex items-center justify-between bg-[#020617]/80 backdrop-blur-xl sticky top-0 z-20 border-b border-white/5">
         <motion.div 
@@ -1898,6 +2065,14 @@ function NourishIQ() {
           </div>
         </motion.div>
         <div className="flex items-center gap-3">
+          <div className="hidden sm:flex items-center gap-2 bg-slate-900/50 px-3 py-1.5 rounded-xl border border-white/5">
+            <Trophy size={16} className="text-amber-500" />
+            <span className="text-xs font-bold text-white">{profile?.points || 0} pts</span>
+          </div>
+          <div className="hidden sm:flex items-center gap-2 bg-slate-900/50 px-3 py-1.5 rounded-xl border border-white/5">
+            <Flame size={16} className="text-orange-500" />
+            <span className="text-xs font-bold text-white">{habits.reduce((max, h) => Math.max(max, h.streak), 0)} Day Streak</span>
+          </div>
           <button 
             onClick={() => setShowTrends(!showTrends)}
             className={cn(
@@ -1924,8 +2099,25 @@ function NourishIQ() {
         </div>
       </header>
 
+      {/* Offline Banner */}
+      <AnimatePresence>
+        {isOffline && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="bg-amber-500/20 border-b border-amber-500/30 overflow-hidden"
+          >
+            <div className="px-6 py-2 flex items-center justify-center gap-2 text-amber-500 text-xs font-medium">
+              <LucideIcons.WifiOff size={14} />
+              You are currently offline. Some features may be unavailable.
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto pb-24 px-6 relative">
+      <main className="flex-1 overflow-y-auto pb-32 px-6 relative">
         {/* User Profile Modal */}
       <AnimatePresence>
         {viewingProfile && (
@@ -1965,6 +2157,27 @@ function NourishIQ() {
                 </div>
 
                 <div className="w-full mt-8 space-y-4">
+                  {/* Badges Section */}
+                  {viewingProfile.badges && viewingProfile.badges.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-500 border-b border-white/5 pb-2">
+                        <span>Badges</span>
+                        <span>{viewingProfile.badges.length} Earned</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {viewingProfile.badges.map((badge) => {
+                          const Icon = (LucideIcons[badge.icon as keyof typeof LucideIcons] || LucideIcons.Award) as React.ElementType;
+                          return (
+                            <div key={badge.id} className="bg-slate-950/50 border border-white/5 px-3 py-1.5 rounded-xl flex items-center gap-2" title={badge.description}>
+                              <Icon size={14} className="text-amber-400" />
+                              <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">{badge.title}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-500 border-b border-white/5 pb-2">
                     <span>Achievements</span>
                     <span>{viewingProfile.achievements?.length || 0} Unlocked</span>
@@ -2269,25 +2482,38 @@ function NourishIQ() {
         <AnimatePresence>
           {pointsToast && (
             <motion.div 
-              initial={{ opacity: 0, y: -20, x: '-50%' }}
-              animate={{ opacity: 1, y: 0, x: '-50%' }}
-              exit={{ opacity: 0, y: -20, x: '-50%' }}
-              className="fixed top-36 left-1/2 z-50 bg-gradient-to-r from-amber-500 to-orange-500 text-white px-6 py-3 rounded-2xl shadow-2xl shadow-amber-500/20 flex items-center gap-3 border border-white/20 backdrop-blur-md"
+              initial={{ opacity: 0, scale: 0.8, y: -20, x: '-50%' }}
+              animate={{ opacity: 1, scale: 1, y: 0, x: '-50%' }}
+              exit={{ opacity: 0, scale: 0.8, y: -20, x: '-50%' }}
+              className="fixed top-28 left-1/2 z-[110] bg-slate-950/80 text-white px-6 py-4 rounded-[2rem] border border-amber-500/30 backdrop-blur-2xl shadow-[0_0_30px_rgba(245,158,11,0.2)] flex items-center gap-4 min-w-[240px]"
             >
-              <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
-                <Zap size={16} className="text-amber-100" />
+              <div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center relative">
+                <div className="absolute inset-0 bg-amber-500/20 blur-xl animate-pulse" />
+                <Zap size={24} className="text-amber-400 relative z-10 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
               </div>
               <div>
-                <span className="block text-xs font-bold uppercase tracking-widest">+{pointsToast.points} Points</span>
-                <span className="block text-[10px] text-amber-100">{pointsToast.reason}</span>
+                <span className="block text-sm font-black uppercase tracking-[0.1em] text-white">+{pointsToast.points} Points</span>
+                <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest">{pointsToast.reason}</span>
               </div>
+              <motion.div 
+                initial={{ width: 0 }}
+                animate={{ width: '100%' }}
+                className="absolute bottom-0 left-0 h-1 bg-gradient-to-r from-amber-500 to-orange-500 rounded-full"
+              />
             </motion.div>
           )}
         </AnimatePresence>
 
         <AnimatePresence mode="wait">
           {activeTab === 'dashboard' && (
-            <motion.div key="dashboard" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6 py-4">
+            <motion.div 
+              key="dashboard" 
+              initial={{ opacity: 0, y: 20, scale: 0.98 }} 
+              animate={{ opacity: 1, y: 0, scale: 1 }} 
+              exit={{ opacity: 0, y: -20, scale: 0.98 }} 
+              transition={{ type: "spring", damping: 20, stiffness: 100 }}
+              className="space-y-6 py-4"
+            >
               {/* NORI AI Daily Insight */}
               <AnimatePresence>
                 {showTrends && (
@@ -2295,10 +2521,10 @@ function NourishIQ() {
                     initial={{ opacity: 0, scale: 0.95 }} 
                     animate={{ opacity: 1, scale: 1 }} 
                     exit={{ opacity: 0, scale: 0.95 }}
-                    className="glass-card rounded-[2rem] p-5 relative overflow-hidden group border border-emerald-500/20"
+                    className="tech-card border-emerald-500/20 group"
                   >
-                    <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-transparent opacity-50" />
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/20 blur-[60px] rounded-full -mr-10 -mt-10 group-hover:bg-emerald-500/30 transition-colors duration-700" />
+                    <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-transparent opacity-40" />
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/20 blur-[60px] rounded-full -mr-10 -mt-10 group-hover:bg-emerald-500/30 transition-colors duration-700 pointer-events-none" />
                     
                     <button 
                       onClick={() => setShowTrends(false)}
@@ -2339,8 +2565,52 @@ function NourishIQ() {
                 )}
               </AnimatePresence>
 
+              {/* Level Progress Indicator */}
+              <section className="tech-card border-white/10 p-4 py-3 flex items-center justify-between group cursor-pointer hover:border-blue-500/30 transition-all bg-slate-900/40">
+                <div className="flex items-center gap-4">
+                  <div className={cn(
+                    "w-12 h-12 rounded-[1.25rem] flex items-center justify-center relative",
+                    userClassData.currentClass.bg,
+                    userClassData.currentClass.color
+                  )}>
+                    <div className={cn("absolute inset-0 blur-lg opacity-30", userClassData.currentClass.bg)} />
+                    {(() => {
+                      const Icon = LucideIcons[userClassData.currentClass.icon as keyof typeof LucideIcons] as any || LucideIcons.Star;
+                      return <Icon size={24} className="relative z-10" />;
+                    })()}
+                  </div>
+                  <div>
+                    <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-0.5">Current Rank</h3>
+                    <p className={cn("text-base font-display font-black tracking-tight", userClassData.currentClass.color)}>
+                      {userClassData.currentClass.name}
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="text-right">
+                  <div className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">
+                    {userClassData.nextClass ? (
+                      <><span className="text-white">{userClassData.nextClass.minPoints - (profile?.points || 0)}</span> pts to NEXT LEVEL</>
+                    ) : (
+                      "MAX RANK REACHED"
+                    )}
+                  </div>
+                  <div className="w-32 h-1.5 bg-slate-900 rounded-full mt-2 overflow-hidden border border-white/5">
+                    {userClassData.nextClass && (
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ 
+                          width: `${Math.min(((profile?.points || 0) - userClassData.currentClass.minPoints) / (userClassData.nextClass.minPoints - userClassData.currentClass.minPoints) * 100, 100)}%` 
+                        }}
+                        className="h-full bg-gradient-to-r from-blue-500 to-indigo-500"
+                      />
+                    )}
+                  </div>
+                </div>
+              </section>
+
               {/* Daily Progress */}
-              <section className="glass-card rounded-[2rem] p-7 relative overflow-hidden group">
+              <section className="tech-card border-white/5 relative group">
                 <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/5 blur-[80px] rounded-full -mr-24 -mt-24 pointer-events-none" />
                 <button 
                   onClick={() => handleShare("My Daily Progress on Nourish IQ", `I've consumed ${stats.calories} calories today out of my ${stats.targetCalories} goal!`)}
@@ -2398,7 +2668,7 @@ function NourishIQ() {
               </section>
 
               {/* 7-Day Trend Chart */}
-              <section className="glass-card rounded-[2rem] p-7">
+              <section className="tech-card border-white/5">
                 <div className="flex items-center justify-between mb-8">
                   <h3 className="font-display font-bold text-lg text-white flex items-center gap-2.5">
                     <div className="w-8 h-8 bg-emerald-500/10 rounded-lg flex items-center justify-center text-emerald-500">
@@ -2458,31 +2728,43 @@ function NourishIQ() {
               </section>
 
               {/* Macros & Water */}
-              <div className="grid grid-cols-2 gap-5">
-                <div className="glass-card rounded-[2rem] p-6 relative overflow-hidden">
-                  <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Macros</h3>
-                  <div className="h-32 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie data={macroData} innerRadius={35} outerRadius={50} paddingAngle={8} dataKey="value" stroke="none">
-                          {macroData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                        </Pie>
-                        <RechartsTooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '12px', color: '#f8fafc' }} />
-                      </PieChart>
-                    </ResponsiveContainer>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="tech-card border-white/5">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Macro Breakdown</h3>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                      <span className="text-[9px] font-bold text-slate-400 uppercase">Actual</span>
+                    </div>
                   </div>
-                  <div className="flex justify-center gap-4 mt-2">
-                    {macroData.map((m, i) => (
-                      <div key={i} className="flex items-center gap-1.5">
-                        <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: m.color }} />
-                        <span className="text-[9px] font-bold text-slate-500 uppercase">{m.name[0]}</span>
+                  <div className="space-y-4">
+                    {[
+                      { name: 'Protein', value: stats.protein, target: stats.targetProtein || 1, color: 'emerald' },
+                      { name: 'Carbs', value: stats.carbs, target: stats.targetCarbs || 1, color: 'blue' },
+                      { name: 'Fat', value: stats.fat, target: stats.targetFat || 1, color: 'amber' },
+                    ].map((m) => (
+                      <div key={m.name} className="space-y-1.5">
+                        <div className="flex justify-between items-end">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{m.name}</span>
+                          <span className="text-[10px] font-bold text-white">{m.value}g <span className="text-slate-500">/ {m.target}g</span></span>
+                        </div>
+                        <div className="h-2 bg-slate-800/50 rounded-full overflow-hidden">
+                          <motion.div 
+                            initial={{ width: 0 }}
+                            animate={{ width: `${Math.min((m.value / m.target) * 100, 100)}%` }}
+                            className={cn(
+                              "h-full rounded-full",
+                              m.color === 'emerald' ? "bg-emerald-500" : m.color === 'blue' ? "bg-blue-500" : "bg-amber-500"
+                            )}
+                          />
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
-                <div className="glass-card rounded-[2rem] p-6 flex flex-col items-center justify-center relative overflow-hidden">
-                  <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest absolute top-6 left-6">Water</h3>
-                  <div className="relative w-24 h-24 flex items-center justify-center mt-4">
+                <div className="tech-card border-white/5 flex flex-col items-center justify-center min-h-[220px]">
+                  <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest absolute top-6 left-6">Hydration</h3>
+                  <div className="relative w-24 h-24 flex items-center justify-center mt-4 group/water">
                     <svg className="w-full h-full transform -rotate-90">
                       <circle
                         cx="48"
@@ -2491,7 +2773,7 @@ function NourishIQ() {
                         stroke="currentColor"
                         strokeWidth="7"
                         fill="transparent"
-                        className="text-slate-800/50"
+                        className="text-slate-800/30"
                       />
                       <motion.circle
                         cx="48"
@@ -2502,42 +2784,92 @@ function NourishIQ() {
                         fill="transparent"
                         strokeDasharray={263.9}
                         initial={{ strokeDashoffset: 263.9 }}
-                        animate={{ strokeDashoffset: 263.9 - (Math.min(stats.waterIntake / stats.waterIntakeGoal, 1) * 263.9) }}
-                        className="text-blue-500"
+                        animate={{ strokeDashoffset: 263.9 - (Math.min(stats.waterIntake / (stats.waterIntakeGoal || 1), 1) * 263.9) }}
+                        className="text-blue-500 drop-shadow-[0_0_8px_rgba(59,130,246,0.5)]"
                         strokeLinecap="round"
                       />
                     </svg>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <div className="absolute inset-0 flex flex-col items-center justify-center transition-transform group-hover/water:scale-110 duration-500">
                       <div className="w-8 h-8 bg-blue-500/10 rounded-full flex items-center justify-center text-blue-400 mb-1">
                         <Droplets size={16} />
                       </div>
-                      <span className="text-xs font-bold text-white">{Math.round((stats.waterIntake / stats.waterIntakeGoal) * 100)}%</span>
+                      <span className="text-xs font-black text-white">{Math.round((stats.waterIntake / stats.waterIntakeGoal) * 100)}%</span>
                     </div>
                   </div>
                   <div className="mt-5 flex items-baseline gap-1">
-                    <span className="text-xl font-display font-bold text-white">{stats.waterIntake}</span>
+                    <span className="text-xl font-display font-black text-white">{stats.waterIntake}</span>
                     <span className="text-slate-500 text-[10px] font-bold uppercase">/ {stats.waterIntakeGoal} ml</span>
                   </div>
                   <button 
-                    onClick={() => setStats(s => ({ ...s, waterIntake: s.waterIntake + 250 }))}
-                    className="mt-4 w-full py-2.5 bg-blue-500/10 text-blue-400 rounded-xl text-[10px] font-bold uppercase tracking-widest border border-blue-500/20 hover:bg-blue-500/20 transition-all flex items-center justify-center gap-2"
+                    onClick={() => {
+                      setStats(s => ({ ...s, waterIntake: s.waterIntake + 250 }));
+                      awardPoints(2, "Hydration focus");
+                    }}
+                    className="mt-4 w-full py-3 bg-blue-500/10 text-blue-400 rounded-xl text-[10px] font-black uppercase tracking-widest border border-blue-500/10 hover:bg-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
                   >
                     <Plus size={14} /> Add 250ml
                   </button>
                 </div>
               </div>
 
+              {/* Recent Activity */}
+              <section className="tech-card border-white/5 space-y-6">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Recent Activity</h3>
+                  <button 
+                    onClick={() => setActiveTab('logs')}
+                    className="text-[10px] font-black uppercase tracking-widest text-emerald-500 hover:text-emerald-400 transition-colors"
+                  >
+                    View All
+                  </button>
+                </div>
+                <div className="space-y-4 pt-2">
+                  {foodLogs.slice(0, 3).map((log) => (
+                    <div key={log.id} className="flex items-center gap-4 group cursor-pointer" onClick={() => setViewingLog(log)}>
+                      <div className="w-12 h-12 rounded-xl overflow-hidden bg-slate-800 flex-shrink-0 border border-white/5">
+                        {log.imageUrl ? (
+                          <img src={log.imageUrl} alt={log.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-slate-600">
+                            <Utensils size={18} />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-sm font-bold text-white truncate group-hover:text-emerald-400 transition-colors">{log.name}</h4>
+                        <p className="text-[10px] text-slate-500 font-medium">{format(log.timestamp, 'MMM d, HH:mm')} • {log.calories} kcal</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <div className="flex flex-col items-end">
+                          <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-wider">{log.protein}g</span>
+                          <span className="text-[8px] text-slate-600 uppercase font-black">P</span>
+                        </div>
+                        <div className="flex flex-col items-end">
+                          <span className="text-[9px] font-bold text-blue-400 uppercase tracking-wider">{log.carbs}g</span>
+                          <span className="text-[8px] text-slate-600 uppercase font-black">C</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {foodLogs.length === 0 && (
+                    <div className="py-4 text-center border border-dashed border-white/5 rounded-2xl">
+                      <p className="text-[10px] text-slate-500 font-medium">No recent activity</p>
+                    </div>
+                  )}
+                </div>
+              </section>
+
               {/* Weekly Quests */}
-              <section className="glass-card rounded-[2.5rem] p-6 relative overflow-hidden">
+              <section className="tech-card border-purple-500/20">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 blur-3xl rounded-full" />
                 <div className="flex items-center justify-between mb-6 relative z-10">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-purple-500/10 rounded-xl flex items-center justify-center text-purple-400">
+                    <div className="w-10 h-10 bg-purple-500/10 rounded-2xl flex items-center justify-center text-purple-400">
                       <Target size={20} />
                     </div>
                     <div>
-                      <h3 className="font-display font-bold text-lg text-white tracking-tight">Weekly Quests</h3>
-                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Earn Bonus Points</p>
+                      <h3 className="font-display font-medium text-xl text-white tracking-tight">Weekly Quests</h3>
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Global Challenges</p>
                     </div>
                   </div>
                 </div>
@@ -2573,8 +2905,8 @@ function NourishIQ() {
               </section>
 
               {/* Vitamins & Micronutrients */}
-              <section className="glass-card rounded-[2rem] p-7">
-                <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-6">Daily Vitamins & Micronutrients</h3>
+              <section className="tech-card border-blue-500/10">
+                <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6">Daily Vitamins & Micronutrients</h3>
                 {stats.vitamins && stats.vitamins.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {stats.vitamins.map((v, i) => (
@@ -2601,21 +2933,21 @@ function NourishIQ() {
               <div className="grid grid-cols-2 gap-5">
                 <button 
                   onClick={() => setActiveTab('recipe')}
-                  className="p-5 glass-card rounded-[2rem] flex flex-col items-center gap-3 group hover:scale-[1.02] transition-all"
+                  className="p-6 tech-card border-emerald-500/10 flex flex-col items-center gap-3 group hover:scale-[1.02] active:scale-95 transition-all text-center"
                 >
-                  <div className="w-12 h-12 bg-emerald-500/10 text-emerald-400 rounded-2xl flex items-center justify-center group-hover:bg-emerald-500 group-hover:text-white transition-all duration-300">
-                    <ChefHat size={24} />
+                  <div className="w-14 h-14 bg-emerald-500/10 text-emerald-400 rounded-2xl flex items-center justify-center group-hover:bg-emerald-500 group-hover:text-white transition-all duration-300 shadow-lg shadow-emerald-500/5">
+                    <ChefHat size={28} />
                   </div>
-                  <span className="font-bold text-xs text-slate-300 uppercase tracking-widest">Analyze Recipe</span>
+                  <span className="font-black text-[10px] text-slate-400 uppercase tracking-widest group-hover:text-emerald-400 transition-colors">Analyze Recipe</span>
                 </button>
                 <button 
                   onClick={() => startCamera()}
-                  className="p-5 glass-card rounded-[2rem] flex flex-col items-center gap-3 group hover:scale-[1.02] transition-all"
+                  className="p-6 tech-card border-blue-500/10 flex flex-col items-center gap-3 group hover:scale-[1.02] active:scale-95 transition-all text-center"
                 >
-                  <div className="w-12 h-12 bg-blue-500/10 text-blue-400 rounded-2xl flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-all duration-300">
-                    <Camera size={24} />
+                  <div className="w-14 h-14 bg-blue-500/10 text-blue-400 rounded-2xl flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-all duration-300 shadow-lg shadow-blue-500/5">
+                    <Camera size={28} />
                   </div>
-                  <span className="font-bold text-xs text-slate-300 uppercase tracking-widest">Snap Meal</span>
+                  <span className="font-black text-[10px] text-slate-400 uppercase tracking-widest group-hover:text-blue-400 transition-colors">Snap Meal</span>
                 </button>
               </div>
 
@@ -2627,48 +2959,184 @@ function NourishIQ() {
               <div className="flex items-center gap-5">
                 <button 
                   onClick={() => setActiveTab('dashboard')} 
-                  className="w-12 h-12 glass-card rounded-2xl flex items-center justify-center text-slate-400 hover:text-white transition-all"
+                  className="w-12 h-12 tech-card rounded-2xl flex items-center justify-center text-slate-400 hover:text-white transition-all border-white/5"
                 >
                   <ArrowLeft size={20} />
                 </button>
                 <div>
-                  <h2 className="font-display font-bold text-2xl text-white tracking-tight">Recipe Analysis</h2>
-                  <p className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest">AI Powered Nutrition</p>
+                  <h2 className="font-display font-bold text-2xl text-white tracking-tight">AI Kitchen</h2>
+                  <p className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest">Smart Recipe Tools</p>
                 </div>
               </div>
-              
-              <div className="glass-card rounded-[2rem] p-6 space-y-4">
-                <p className="text-slate-400 text-xs leading-relaxed">
-                  Paste your ingredients list and quantities below. Nourish IQ will calculate the total nutrition for you using advanced AI analysis.
-                </p>
-                <div className="relative">
-                  <textarea 
-                    value={recipeInput}
-                    onChange={(e) => setRecipeInput(e.target.value)}
-                    placeholder="e.g., 2 eggs, 1 slice of whole grain bread, 1/2 avocado..."
-                    className="w-full h-56 bg-slate-950/50 border border-white/5 rounded-2xl p-5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none resize-none text-slate-100 custom-scrollbar placeholder:text-slate-700"
-                  />
-                  <div className="absolute bottom-4 right-4 text-[10px] font-bold text-slate-700 uppercase tracking-widest">
-                    {recipeInput.length} chars
-                  </div>
-                </div>
-                <button 
-                  onClick={handleRecipeAnalysis}
-                  disabled={isAnalyzing || !recipeInput.trim()}
-                  className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-2xl font-bold shadow-xl shadow-emerald-500/20 disabled:opacity-50 flex items-center justify-center gap-3 group transition-all active:scale-[0.98]"
-                >
-                  {isAnalyzing ? (
-                    <Loader2 className="animate-spin" size={20} />
-                  ) : (
-                    <>
-                      <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center group-hover:rotate-12 transition-transform">
-                        <Zap size={16} />
-                      </div>
-                      Analyze & Log Recipe
-                    </>
+
+              {/* Sub-tab Switcher */}
+              <div className="flex p-1 bg-slate-900/50 rounded-2xl border border-white/5">
+                <button
+                  onClick={() => setRecipeTab('analyze')}
+                  className={cn(
+                    "flex-1 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all",
+                    recipeTab === 'analyze' ? "bg-emerald-500 text-white shadow-lg" : "text-slate-500 hover:text-slate-300"
                   )}
+                >
+                  Analyze Recipe
+                </button>
+                <button
+                  onClick={() => setRecipeTab('fridge')}
+                  className={cn(
+                    "flex-1 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all",
+                    recipeTab === 'fridge' ? "bg-emerald-500 text-white shadow-lg" : "text-slate-500 hover:text-slate-300"
+                  )}
+                >
+                  Fridge Suggestions
                 </button>
               </div>
+              
+              {recipeTab === 'analyze' ? (
+                <div className="tech-card border-white/5 space-y-4">
+                  <p className="text-slate-400 text-xs leading-relaxed opacity-70">
+                    Paste your ingredients list and quantities below. Nourish IQ will calculate the total nutrition for you using advanced AI analysis.
+                  </p>
+                  <div className="relative">
+                    <textarea 
+                      value={recipeInput}
+                      onChange={(e) => setRecipeInput(e.target.value)}
+                      placeholder="e.g., 2 eggs, 1 slice of whole grain bread, 1/2 avocado..."
+                      className="w-full h-56 bg-slate-950/50 border border-white/5 rounded-2xl p-5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none resize-none text-slate-100 custom-scrollbar placeholder:text-slate-700"
+                    />
+                    <div className="absolute bottom-4 right-4 text-[10px] font-bold text-slate-700 uppercase tracking-widest">
+                      {recipeInput.length} chars
+                    </div>
+                  </div>
+                  <button 
+                    onClick={handleRecipeAnalysis}
+                    disabled={isAnalyzing || !recipeInput.trim()}
+                    className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-2xl font-bold shadow-xl shadow-emerald-500/20 disabled:opacity-50 flex items-center justify-center gap-3 group transition-all active:scale-[0.98]"
+                  >
+                    {isAnalyzing ? (
+                      <Loader2 className="animate-spin" size={20} />
+                    ) : (
+                      <>
+                        <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center group-hover:rotate-12 transition-transform">
+                          <Zap size={16} />
+                        </div>
+                        Analyze & Log Recipe
+                      </>
+                    )}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="tech-card border-white/5 space-y-4 relative group">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 blur-3xl rounded-full pointer-events-none" />
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-400">
+                        <Refrigerator size={20} />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-white">What's in your fridge?</h3>
+                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">List your ingredients</p>
+                      </div>
+                    </div>
+                    <p className="text-slate-400 text-xs leading-relaxed">
+                      Tell us what ingredients you have, and NORI AI will suggest a creative, healthy recipe you can make right now.
+                    </p>
+                    <div className="relative">
+                      <textarea 
+                        value={fridgeIngredients}
+                        onChange={(e) => setFridgeIngredients(e.target.value)}
+                        placeholder="e.g., chicken breast, spinach, garlic, lemon, pasta..."
+                        className="w-full h-32 bg-slate-950/50 border border-white/5 rounded-2xl p-5 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none text-slate-100 custom-scrollbar placeholder:text-slate-700"
+                      />
+                    </div>
+                    <button 
+                      onClick={handleFridgeSuggestion}
+                      disabled={isGeneratingRecipe || !fridgeIngredients.trim()}
+                      className="w-full py-4 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-2xl font-bold shadow-xl shadow-blue-500/20 disabled:opacity-50 flex items-center justify-center gap-3 group transition-all active:scale-[0.98]"
+                    >
+                      {isGeneratingRecipe ? (
+                        <Loader2 className="animate-spin" size={20} />
+                      ) : (
+                        <>
+                          <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center group-hover:rotate-12 transition-transform">
+                            <ChefHat size={16} />
+                          </div>
+                          Suggest a Recipe
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {generatedRecipe && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="tech-card border-emerald-500/20 space-y-6 relative overflow-hidden"
+                    >
+                      <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/5 blur-[100px] rounded-full -mr-24 -mt-24 pointer-events-none" />
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h3 className="text-xl font-display font-bold text-white tracking-tight">{generatedRecipe.title}</h3>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Clock size={14} className="text-slate-500" />
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{generatedRecipe.estimatedTime}</span>
+                          </div>
+                        </div>
+                        <div className="w-12 h-12 bg-emerald-500/10 rounded-2xl flex items-center justify-center text-emerald-400">
+                          <ChefHat size={24} />
+                        </div>
+                      </div>
+
+                      <p className="text-slate-400 text-sm italic leading-relaxed">
+                        "{generatedRecipe.description}"
+                      </p>
+
+                      <div className="space-y-4">
+                        <div>
+                          <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Ingredients
+                          </h4>
+                          <ul className="grid grid-cols-1 gap-2">
+                            {generatedRecipe.ingredients.map((ing: string, i: number) => (
+                              <li key={i} className="flex items-center gap-3 text-sm text-slate-300 bg-slate-900/50 p-3 rounded-xl border border-white/5">
+                                <div className="w-5 h-5 rounded-full bg-emerald-500/10 flex items-center justify-center text-[10px] font-bold text-emerald-400">
+                                  {i + 1}
+                                </div>
+                                {ing}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+
+                        <div>
+                          <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Instructions
+                          </h4>
+                          <div className="space-y-3">
+                            {generatedRecipe.instructions.map((step: string, i: number) => (
+                              <div key={i} className="flex gap-4">
+                                <div className="text-xs font-black text-slate-700 mt-0.5">{String(i + 1).padStart(2, '0')}</div>
+                                <p className="text-sm text-slate-400 leading-relaxed">{step}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button 
+                        onClick={() => {
+                          setRecipeInput(generatedRecipe.ingredients.join(', '));
+                          setRecipeTab('analyze');
+                          setGeneratedRecipe(null);
+                          setFridgeIngredients('');
+                        }}
+                        className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-bold border border-white/5 transition-all flex items-center justify-center gap-2"
+                      >
+                        <Zap size={16} className="text-emerald-400" /> Analyze Nutrition
+                      </button>
+                    </motion.div>
+                  )}
+                </div>
+              )}
             </motion.div>
           )}
 
@@ -2686,8 +3154,9 @@ function NourishIQ() {
                     layout
                     key={log.id} 
                     onClick={() => setViewingLog(log)}
-                    className="glass-card rounded-[2rem] p-4 flex gap-5 group hover:border-emerald-500/30 transition-colors cursor-pointer"
+                    className="tech-card border-white/5 p-4 flex gap-5 group hover:border-emerald-500/30 transition-all cursor-pointer relative overflow-hidden"
                   >
+                    <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] to-transparent pointer-events-none" />
                     <div className="relative w-24 h-24 flex-shrink-0">
                       {log.imageUrl ? (
                         <img src={log.imageUrl} alt={log.name} className="w-full h-full rounded-2xl object-cover shadow-lg" referrerPolicy="no-referrer" />
@@ -2769,7 +3238,7 @@ function NourishIQ() {
                   <motion.div 
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="py-16 text-center glass-card rounded-[2rem] border-dashed border-2 border-white/5"
+                    className="py-16 text-center tech-card border-dashed border-2 border-white/5 bg-transparent"
                   >
                     <div className="w-24 h-24 bg-gradient-to-br from-emerald-500/10 to-teal-500/10 rounded-full flex items-center justify-center text-emerald-500/50 mx-auto mb-6 relative">
                       <div className="absolute inset-0 bg-emerald-500/20 blur-xl rounded-full animate-pulse" />
@@ -2923,7 +3392,7 @@ function NourishIQ() {
                   <motion.div 
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="py-16 text-center glass-card rounded-[2rem] border-dashed border-2 border-white/5"
+                    className="py-16 text-center tech-card border-dashed border-2 border-white/5 bg-transparent"
                   >
                     <div className="w-24 h-24 bg-gradient-to-br from-indigo-500/10 to-purple-500/10 rounded-full flex items-center justify-center text-indigo-500/50 mx-auto mb-6 relative">
                       <div className="absolute inset-0 bg-indigo-500/20 blur-xl rounded-full animate-pulse" />
@@ -2949,10 +3418,10 @@ function NourishIQ() {
                     }}
                     transition={{ duration: 0.4, ease: "easeOut" }}
                     className={cn(
-                      "p-6 rounded-[2rem] border transition-all relative overflow-hidden group",
+                      "p-6 rounded-[2rem] border transition-all relative overflow-hidden group/habit",
                       habit.completed 
                         ? "bg-emerald-500/10 border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.1)]" 
-                        : "glass-card border-white/5"
+                        : "tech-card border-white/5 hover:border-white/10"
                     )}
                   >
                     {habit.completed && (
@@ -3007,68 +3476,123 @@ function NourishIQ() {
                             return <Icon size={26} />;
                           })()}
                         </motion.div>
-                        <div>
-                          <h3 className={cn(
-                            "font-bold text-lg transition-colors duration-500",
-                            habit.completed ? "text-white" : "text-slate-300"
-                          )}>{habit.name}</h3>
-                          <div className="flex items-center gap-3 mt-0.5">
-                            <div className="flex items-center gap-1">
-                              {habit.streak >= 3 ? (
-                                <motion.div
-                                  animate={{ scale: [1, 1.2, 1], rotate: [-5, 5, -5] }}
-                                  transition={{ duration: 2, repeat: Infinity }}
-                                >
-                                  <Flame size={14} className="text-orange-500 drop-shadow-[0_0_8px_rgba(249,115,22,0.8)]" />
-                                </motion.div>
-                              ) : (
-                                <TrendingUp size={12} className={habit.completed ? "text-emerald-500" : "text-slate-600"} />
-                              )}
-                              <span className={cn(
-                                "text-[10px] font-bold uppercase tracking-wider",
-                                habit.streak >= 3 ? "text-orange-400" : "text-slate-500"
-                              )}>{habit.streak} day streak</span>
-                            </div>
-                            {habit.reminderTime && (
-                              <div className="flex items-center gap-1">
-                                <Bell size={10} className="text-slate-600" />
-                                <span className="text-[10px] text-slate-600 font-bold">{habit.reminderTime}</span>
-                              </div>
-                            )}
-                            {habit.skippedDates?.includes(format(new Date(), 'yyyy-MM-dd')) && (
-                              <div className="flex items-center gap-1">
-                                <SkipForward size={10} className="text-amber-500" />
-                                <span className="text-[10px] text-amber-500 font-bold uppercase tracking-wider">Skipped</span>
-                              </div>
-                            )}
-                          </div>
-                          
-                          {/* 7-Day History */}
-                          <div className="flex items-center gap-1 mt-2">
-                            {[...Array(7)].map((_, i) => {
-                              const date = subDays(new Date(), 6 - i);
-                              const dateStr = format(date, 'yyyy-MM-dd');
-                              const isCompleted = habit.completionHistory?.includes(dateStr) || (i === 6 && habit.completed);
-                              const isToday = i === 6;
-                              
-                              return (
-                                <div 
-                                  key={i}
-                                  className={cn(
-                                    "w-4 h-4 rounded-full border flex items-center justify-center text-[8px]",
-                                    isCompleted 
-                                      ? "bg-emerald-500 border-emerald-500 text-white" 
-                                      : "bg-slate-800 border-white/10 text-slate-600",
-                                    isToday && !isCompleted && "border-slate-500 border-dashed"
-                                  )}
-                                  title={format(date, 'MMM d')}
-                                >
-                                  {isCompleted && <CheckCircle2 size={8} />}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
+        {/* Habit Card Details */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className={cn(
+              "font-bold text-lg transition-colors duration-500",
+              habit.completed ? "text-white" : "text-slate-300"
+            )}>{habit.name}</h3>
+            
+            {/* Visual Streak Indicator */}
+            <div className="flex items-center gap-2">
+              <div className="relative w-8 h-8 flex items-center justify-center">
+                <svg className="absolute inset-0 w-full h-full -rotate-90 overflow-visible">
+                  <circle
+                    cx="16"
+                    cy="16"
+                    r="14"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    className="text-slate-800/50"
+                  />
+                  <motion.circle
+                    cx="16"
+                    cy="16"
+                    r="14"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeDasharray="88"
+                    initial={{ strokeDashoffset: 88 }}
+                    animate={{ strokeDashoffset: 88 - (88 * Math.min(habit.streak / 7, 1)) }}
+                    transition={{ duration: 1, ease: "easeOut" }}
+                    className={cn(
+                      "transition-colors duration-500",
+                      habit.completed ? "text-emerald-500" : "text-orange-500"
+                    )}
+                  />
+                  {/* Glowing end cap */}
+                  {habit.streak > 0 && (
+                    <motion.circle
+                      cx={16 + 14 * Math.cos((Math.min(habit.streak / 7, 1) * 360 - 90) * Math.PI / 180)}
+                      cy={16 + 14 * Math.sin((Math.min(habit.streak / 7, 1) * 360 - 90) * Math.PI / 180)}
+                      r="3"
+                      className={cn(
+                        "fill-current",
+                        habit.completed ? "text-emerald-400" : "text-orange-400"
+                      )}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                    />
+                  )}
+                </svg>
+                <div className="relative z-10 flex items-center justify-center group/flame">
+                  <motion.div
+                    animate={habit.streak >= 3 ? {
+                      scale: [1, 1.1, 1],
+                      filter: ["brightness(1)", "brightness(1.5)", "brightness(1)"]
+                    } : {}}
+                    transition={{ duration: 2, repeat: Infinity }}
+                  >
+                    <Flame 
+                      size={16} 
+                      className={cn(
+                        "transition-all duration-500",
+                        habit.streak > 0 
+                          ? habit.completed ? "text-emerald-500" : "text-orange-500" 
+                          : "text-slate-700"
+                      )} 
+                    />
+                  </motion.div>
+                </div>
+              </div>
+              <span className={cn(
+                "text-[10px] font-black uppercase tracking-widest",
+                habit.streak >= 3 ? "text-orange-400" : "text-slate-500"
+              )}>{habit.streak}d</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 mt-1 underline-offset-4">
+            {habit.reminderTime && (
+              <div className="flex items-center gap-1">
+                <Bell size={10} className={cn("transition-colors", habit.completed ? "text-emerald-500/60" : "text-slate-600")} />
+                <span className={cn("text-[10px] font-bold", habit.completed ? "text-emerald-500/60" : "text-slate-600")}>{habit.reminderTime}</span>
+              </div>
+            )}
+            {habit.skippedDates?.includes(format(new Date(), 'yyyy-MM-dd')) && (
+              <div className="flex items-center gap-1">
+                <SkipForward size={10} className="text-amber-500" />
+                <span className="text-[10px] text-amber-500 font-bold uppercase tracking-wider">Skipped</span>
+              </div>
+            )}
+          </div>
+          
+          {/* 7-Day History Mini-Grid */}
+          <div className="flex items-center gap-1 mt-3">
+            {[...Array(7)].map((_, i) => {
+              const date = subDays(new Date(), 6 - i);
+              const dateStr = format(date, 'yyyy-MM-dd');
+              const isCompleted = habit.completionHistory?.includes(dateStr) || (i === 6 && habit.completed);
+              const isToday = i === 6;
+              
+              return (
+                <div 
+                  key={i}
+                  className={cn(
+                    "w-6 flex-1 h-1.5 rounded-full transition-all duration-500",
+                    isCompleted 
+                      ? "bg-emerald-500/50 shadow-[0_0_8px_rgba(16,185,129,0.3)]" 
+                      : isToday ? "bg-slate-800 border border-slate-700" : "bg-slate-900 border border-white/5",
+                  )}
+                  title={format(date, 'MMM d')}
+                />
+              );
+            })}
+          </div>
+        </div>
                       </div>
                       </div>
 
@@ -3220,8 +3744,9 @@ function NourishIQ() {
                 <motion.div 
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="glass-card rounded-[2rem] p-6 border-emerald-500/10 mt-4"
+                  className="tech-card border-emerald-500/10 mt-4 relative group overflow-hidden"
                 >
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 blur-3xl rounded-full -mr-16 -mt-16 pointer-events-none" />
                   <div className="flex items-center gap-4 mb-4">
                     <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-500">
                       <Brain size={20} />
@@ -3274,7 +3799,7 @@ function NourishIQ() {
                         "p-6 rounded-[2.5rem] border transition-all flex items-center gap-6 relative overflow-hidden group",
                         isUnlocked 
                           ? "bg-emerald-500/10 border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.1)]" 
-                          : "glass-card border-white/5 opacity-50 grayscale"
+                          : "tech-card border-white/5 opacity-50 grayscale hover:opacity-70 transition-opacity"
                       )}
                     >
                       {isUnlocked && (
@@ -3328,7 +3853,8 @@ function NourishIQ() {
               </div>
 
               {/* Stats Summary */}
-              <div className="glass-card rounded-[2.5rem] p-8 mt-8 border-yellow-500/10">
+              <div className="tech-card border-yellow-500/10 p-8 mt-8 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-48 h-48 bg-yellow-500/5 blur-[100px] rounded-full -mr-24 -mt-24 pointer-events-none" />
                 <div className="flex items-center gap-4 mb-6">
                   <div className="w-12 h-12 bg-yellow-500/10 rounded-2xl flex items-center justify-center text-yellow-500">
                     <TrendingUp size={24} />
@@ -3420,10 +3946,10 @@ function NourishIQ() {
                       {msg.role === 'user' ? <User size={18} /> : <Brain size={18} />}
                     </div>
                     <div className={cn(
-                      "px-5 py-3.5 rounded-[1.5rem] text-sm leading-relaxed shadow-sm relative group",
+                      "px-5 py-3.5 rounded-[1.5rem] text-sm leading-relaxed shadow-lg relative group",
                       msg.role === 'user' 
-                        ? "bg-slate-800 text-slate-100 rounded-tr-none border border-white/5" 
-                        : "glass-card text-slate-200 rounded-tl-none"
+                        ? "tech-card border-white/5 text-slate-100 rounded-tr-none" 
+                        : "tech-card border-emerald-500/20 text-slate-200 rounded-tl-none bg-emerald-500/5 backdrop-blur-md"
                     )}>
                       <div className="markdown-body">
                         <Markdown>{msg.content}</Markdown>
@@ -3621,7 +4147,7 @@ function NourishIQ() {
                           communityTab === 'messages' ? "text-blue-500" : "text-slate-500 hover:text-slate-300"
                         )}
                       >
-                        Private Messages
+                        Inbox
                       </button>
                       <div className="w-1 h-1 bg-slate-800 rounded-full" />
                       <button 
@@ -3657,13 +4183,13 @@ function NourishIQ() {
                   {/* Community Search Bar */}
                   <div className="px-2 mb-6">
                     <div className="relative group">
-                      <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-                        <Search size={18} className="text-slate-500 group-focus-within:text-blue-400 transition-colors" />
+                      <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none z-10">
+                        <Search size={18} className="text-slate-500 group-focus-within:text-emerald-400 transition-colors" />
                       </div>
                       <input 
                         type="text" 
                         placeholder="Search conversations..." 
-                        className="w-full bg-slate-900/50 border border-white/5 rounded-2xl py-3.5 pl-12 pr-4 text-sm outline-none focus:ring-2 focus:ring-blue-500/50 transition-all text-slate-100 placeholder:text-slate-600"
+                        className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 pl-12 pr-4 text-sm outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all text-slate-100 placeholder:text-slate-700 shadow-inner"
                         value={communitySearchQuery}
                         onChange={(e) => setCommunitySearchQuery(e.target.value)}
                       />
@@ -3713,56 +4239,69 @@ function NourishIQ() {
                           <AnimatedAvatar src={msg.photoURL} alt={msg.displayName} className="w-full h-full object-cover" />
                         </div>
                         <div className="flex flex-col relative">
-                          <div className={cn(
-                            "px-5 py-3 rounded-[1.5rem] text-sm leading-relaxed shadow-sm relative",
-                            msg.uid === user?.uid 
-                              ? "bg-blue-600 text-white rounded-tr-none" 
-                              : "glass-card text-slate-200 rounded-tl-none"
-                          )}>
+                          <div 
+                            onClick={() => setSelectedMessageId(selectedMessageId === msg.id ? null : msg.id)}
+                            className={cn(
+                              "px-5 py-3 rounded-[1.5rem] text-sm leading-relaxed shadow-sm relative cursor-pointer transition-all",
+                              msg.uid === user?.uid 
+                                ? "bg-blue-600 text-white rounded-tr-none" 
+                                : "glass-card text-slate-200 rounded-tl-none",
+                              selectedMessageId === msg.id && (msg.uid === user?.uid ? "ring-2 ring-blue-400" : "ring-2 ring-blue-500/50")
+                            )}
+                          >
                             <div 
-                              onClick={() => msg.uid !== user?.uid && handleUserClick(msg.uid, msg.displayName, msg.photoURL)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                msg.uid !== user?.uid && handleUserClick(msg.uid, msg.displayName, msg.photoURL);
+                              }}
                               className={cn("text-[9px] font-black uppercase tracking-widest mb-1 opacity-70", msg.uid !== user?.uid && "cursor-pointer hover:text-blue-400 transition-colors", msg.uid === user?.uid ? "text-right" : "")}
                             >
                               {msg.displayName}
                             </div>
                             <p dir="auto">{msg.content}</p>
-                            {msg.uid !== user?.uid && (
-                              <div className={cn(
-                                "absolute top-1/2 -translate-y-1/2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity",
-                                msg.uid === user?.uid ? "-left-12" : "-right-12"
-                              )}>
+                            <div className={cn(
+                              "absolute top-1/2 -translate-y-1/2 flex flex-col gap-1 transition-all z-20",
+                              selectedMessageId === msg.id ? "opacity-100 scale-100" : "opacity-0 scale-90 pointer-events-none lg:group-hover:opacity-100 lg:group-hover:scale-100 lg:group-hover:pointer-events-auto",
+                              msg.uid === user?.uid ? "-left-12" : "-right-12"
+                            )}>
+                              {msg.uid !== user?.uid && (
                                 <button 
-                                  onClick={() => setReportingMessage(msg)}
-                                  className="p-1.5 text-slate-600 hover:text-red-500 transition-colors"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setReportingMessage(msg);
+                                    setSelectedMessageId(null);
+                                  }}
+                                  className="p-1.5 bg-slate-900 rounded-lg text-slate-400 hover:text-red-500 transition-colors border border-white/5 shadow-xl"
                                   title="Report Message"
                                 >
                                   <Flag size={14} />
                                 </button>
+                              )}
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleShare(`Community Message from ${msg.displayName}`, msg.content);
+                                  setSelectedMessageId(null);
+                                }}
+                                className="p-1.5 bg-slate-900 rounded-lg text-slate-400 hover:text-blue-400 transition-colors border border-white/5 shadow-xl"
+                                title="Share Message"
+                              >
+                                <Share2 size={14} />
+                              </button>
+                              {msg.uid !== user?.uid && (
                                 <button 
-                                  onClick={() => handleShare(`Community Message from ${msg.displayName}`, msg.content)}
-                                  className="p-1.5 text-slate-600 hover:text-blue-400 transition-colors"
-                                  title="Share Message"
-                                >
-                                  <Share2 size={14} />
-                                </button>
-                                {msg.uid === user?.uid && (
-                                  <button 
-                                    onClick={() => deleteCommunityMessage(msg.id)}
-                                    className="p-1.5 text-slate-600 hover:text-red-400 transition-colors"
-                                    title="Delete Message"
-                                  >
-                                    <Trash2 size={14} />
-                                  </button>
-                                )}
-                                <button 
-                                  onClick={() => startPrivateChat({ uid: msg.uid, displayName: msg.displayName, photoURL: msg.photoURL })}
-                                  className="p-1.5 text-slate-600 hover:text-emerald-400 transition-colors"
-                                  title="Private Message"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    startPrivateChat({ uid: msg.uid, displayName: msg.displayName, photoURL: msg.photoURL });
+                                    setSelectedMessageId(null);
+                                  }}
+                                  className="p-1.5 bg-slate-900 rounded-lg text-slate-400 hover:text-emerald-400 transition-colors border border-white/5 shadow-xl"
+                                  title="Inbox"
                                 >
                                   <MessageSquare size={14} />
                                 </button>
-                              </div>
-                            )}
+                              )}
+                            </div>
                           </div>
                           <span className={cn("text-[9px] font-bold text-slate-600 mt-1 uppercase tracking-tighter", msg.uid === user?.uid ? "text-right" : "")}>
                             {format(msg.timestamp, 'HH:mm')}
@@ -4006,11 +4545,11 @@ function NourishIQ() {
                         <div className="px-2">
                           <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 mb-4">Recent Conversations</h3>
                           {privateChats.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-12 text-center glass-card rounded-[2rem] border-dashed border-white/5">
-                              <div className="w-12 h-12 bg-slate-900 rounded-2xl flex items-center justify-center text-slate-700 mb-4">
-                                <MessageSquare size={24} />
+                            <div className="flex flex-col items-center justify-center py-12 text-center tech-card border-dashed border-white/5">
+                              <div className="w-14 h-14 bg-slate-900 rounded-3xl flex items-center justify-center text-slate-600 mb-4 border border-white/5 shadow-inner">
+                                <MessageSquare size={28} />
                               </div>
-                              <p className="text-slate-500 text-xs font-medium">No private conversations yet.</p>
+                              <p className="text-slate-500 text-xs font-black uppercase tracking-widest opacity-60">No private conversations yet</p>
                             </div>
                           ) : (
                             <div className="space-y-3">
@@ -4019,7 +4558,7 @@ function NourishIQ() {
                                   key={chat.id}
                                   initial={{ opacity: 0, x: -10 }}
                                   animate={{ opacity: 1, x: 0 }}
-                                  className="glass-card p-4 rounded-2xl flex items-center gap-4 cursor-pointer hover:border-blue-500/30 transition-all group relative"
+                                  className="tech-card border-white/5 hover:border-blue-500/20 group relative cursor-pointer"
                                 >
                                   <div className="flex-1 flex items-center gap-4 min-w-0">
                                     <div 
@@ -4084,7 +4623,7 @@ function NourishIQ() {
                           className="p-2 text-slate-600 hover:text-red-500 transition-colors"
                           title="Delete Chat"
                         >
-                          <X size={18} />
+                          <Trash2 size={18} />
                         </button>
                       </div>
                       
@@ -4098,25 +4637,39 @@ function NourishIQ() {
                               animate={{ opacity: 1, y: 0 }}
                               className={cn("flex max-w-[85%]", msg.senderUid === user?.uid ? "ml-auto" : "")}
                             >
-                              <div className={cn(
-                                "px-5 py-3 rounded-[1.5rem] text-sm leading-relaxed shadow-sm relative group/msg",
-                                msg.senderUid === user?.uid 
-                                  ? "bg-blue-600 text-white rounded-tr-none" 
-                                  : "glass-card text-slate-200 rounded-tl-none",
-                                !isFirstFromSender && "mt-1"
-                              )}>
+                              <div 
+                                onClick={() => setSelectedMessageId(selectedMessageId === msg.id ? null : msg.id)}
+                                className={cn(
+                                  "px-5 py-3 rounded-[1.5rem] text-sm leading-relaxed shadow-sm relative group/msg cursor-pointer transition-all",
+                                  msg.senderUid === user?.uid 
+                                    ? "bg-blue-600 text-white rounded-tr-none" 
+                                    : "glass-card text-slate-200 rounded-tl-none",
+                                  !isFirstFromSender && "mt-1",
+                                  selectedMessageId === msg.id && (msg.senderUid === user?.uid ? "ring-2 ring-blue-400" : "ring-2 ring-blue-500/50")
+                                )}
+                              >
                                 <p dir="auto">{msg.content}</p>
                                 <div className={cn("text-[8px] font-black mt-1 opacity-40 uppercase tracking-tighter", msg.senderUid === user?.uid ? "text-right" : "")}>
                                   {format(msg.timestamp instanceof Timestamp ? msg.timestamp.toDate() : new Date(msg.timestamp), 'HH:mm')}
                                 </div>
                                 {msg.senderUid === user?.uid && (
-                                  <button 
-                                    onClick={() => deletePrivateMessage(msg.id)}
-                                    className="absolute -left-8 top-1/2 -translate-y-1/2 p-1.5 text-slate-500 hover:text-red-400 opacity-0 group-hover/msg:opacity-100 transition-all"
-                                    title="Delete Message"
-                                  >
-                                    <Trash2 size={14} />
-                                  </button>
+                                  <div className={cn(
+                                    "absolute top-1/2 -translate-y-1/2 transition-all z-20",
+                                    selectedMessageId === msg.id ? "opacity-100 scale-100" : "opacity-0 scale-90 pointer-events-none group-hover/msg:opacity-100 group-hover/msg:scale-100 group-hover/msg:pointer-events-auto",
+                                    msg.senderUid === user?.uid ? "-left-10" : "-right-10"
+                                  )}>
+                                    <button 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        deletePrivateMessage(msg.id);
+                                        setSelectedMessageId(null);
+                                      }}
+                                      className="p-1.5 bg-slate-900 rounded-lg text-slate-400 hover:text-red-400 transition-colors border border-white/5 shadow-xl"
+                                      title="Delete Message"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
                                 )}
                               </div>
                             </motion.div>
@@ -4150,8 +4703,8 @@ function NourishIQ() {
               {communityTab === 'leagues' && (
                 <div className="flex-1 flex flex-col overflow-hidden space-y-6 overflow-y-auto custom-scrollbar pr-2">
                   {/* Boss Battle Section */}
-                  <div className="glass-card rounded-[2rem] p-6 border-amber-500/20 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl -mr-10 -mt-10" />
+                  <div className="tech-card border-amber-500/20 relative group">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl -mr-10 -mt-10 group-hover:bg-amber-500/20 transition-colors pointer-events-none" />
                     <div className="flex items-center justify-between mb-4 relative z-10">
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-12 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-500 border border-amber-500/30">
@@ -4194,9 +4747,9 @@ function NourishIQ() {
                     <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4 px-2">Global Leaderboard</h3>
                     <div className="space-y-2">
                       {leaderboard.map((user, index) => (
-                        <div key={user.uid} className="glass-card p-4 rounded-2xl flex items-center gap-4 border-white/5 hover:border-white/10 transition-colors">
-                          <div className="w-8 text-center font-display font-bold text-slate-500">
-                            #{index + 1}
+                        <div key={user.uid} className="tech-card border-white/5 hover:border-white/10 flex items-center gap-4 transition-all hover:scale-[1.01]">
+                          <div className="w-8 text-center font-display font-black text-slate-500 text-lg">
+                            {index + 1}
                           </div>
                           <div className="w-10 h-10 rounded-xl overflow-hidden border border-white/10 animate-float">
                             <AnimatedAvatar src={user.photoURL} alt={user.displayName} className="w-full h-full object-cover" />
@@ -4267,7 +4820,7 @@ function NourishIQ() {
                       userClassData.currentClass.border
                     )} onClick={() => setShowClassModal(true)}>
                       {(() => {
-                        const Icon = LucideIcons[userClassData.currentClass.icon as keyof typeof LucideIcons] as React.ElementType;
+                        const Icon = (LucideIcons[userClassData.currentClass.icon as keyof typeof LucideIcons] || LucideIcons.Star) as React.ElementType;
                         return <Icon size={14} />;
                       })()}
                       {userClassData.currentClass.name}
@@ -4279,10 +4832,31 @@ function NourishIQ() {
                       <Share2 size={16} />
                     </button>
                   </div>
+
+                  {/* Badges Display */}
+                  {profile?.badges && profile.badges.length > 0 && (
+                    <div className="mt-4 flex flex-wrap justify-center gap-2">
+                      {profile.badges.map((badge) => {
+                        const Icon = (LucideIcons[badge.icon as keyof typeof LucideIcons] || LucideIcons.Award) as React.ElementType;
+                        return (
+                          <motion.div 
+                            key={badge.id}
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            className="bg-slate-900/50 border border-white/5 px-3 py-1 rounded-full flex items-center gap-2"
+                            title={badge.description}
+                          >
+                            <Icon size={12} className="text-amber-400" />
+                            <span className="text-[9px] font-bold text-slate-300 uppercase tracking-wider">{badge.title}</span>
+                          </motion.div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <div className="glass-card rounded-[2.5rem] p-8 space-y-8">
+              <div className="tech-card border-white/5 space-y-8">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-500">
                     <Settings size={20} />
@@ -4361,8 +4935,71 @@ function NourishIQ() {
                     </div>
                   </div>
 
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">AI Personality</label>
+                  <div className="space-y-4 pt-4 border-t border-white/5">
+                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 flex items-center gap-2">
+                      <Target size={14} className="text-emerald-500" /> Daily Macro Goals
+                    </h4>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Protein (g)</label>
+                        <input 
+                          type="number" 
+                          value={profile?.targetProtein || ''} 
+                          onChange={(e) => setProfile(p => p ? { ...p, targetProtein: Number(e.target.value) } : null)}
+                          className="w-full bg-slate-950/50 border border-white/5 rounded-2xl px-5 py-3.5 text-sm text-slate-100 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Carbs (g)</label>
+                        <input 
+                          type="number" 
+                          value={profile?.targetCarbs || ''} 
+                          onChange={(e) => setProfile(p => p ? { ...p, targetCarbs: Number(e.target.value) } : null)}
+                          className="w-full bg-slate-950/50 border border-white/5 rounded-2xl px-5 py-3.5 text-sm text-slate-100 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Fat (g)</label>
+                        <input 
+                          type="number" 
+                          value={profile?.targetFat || ''} 
+                          onChange={(e) => setProfile(p => p ? { ...p, targetFat: Number(e.target.value) } : null)}
+                          className="w-full bg-slate-950/50 border border-white/5 rounded-2xl px-5 py-3.5 text-sm text-slate-100 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 pt-4 border-t border-white/5">
+                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 flex items-center gap-2">
+                      <Activity size={14} className="text-blue-500" /> Body Metrics
+                    </h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Weight Goal (kg)</label>
+                        <input 
+                          type="number" 
+                          value={profile?.targetWeight || ''} 
+                          onChange={(e) => setProfile(p => p ? { ...p, targetWeight: Number(e.target.value) } : null)}
+                          className="w-full bg-slate-950/50 border border-white/5 rounded-2xl px-5 py-3.5 text-sm text-slate-100 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Body Fat %</label>
+                        <input 
+                          type="number" 
+                          value={profile?.targetBodyFat || ''} 
+                          onChange={(e) => setProfile(p => p ? { ...p, targetBodyFat: Number(e.target.value) } : null)}
+                          className="w-full bg-slate-950/50 border border-white/5 rounded-2xl px-5 py-3.5 text-sm text-slate-100 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 pt-4 border-t border-white/5">
+                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 flex items-center gap-2">
+                      <Brain size={14} className="text-purple-500" /> AI Personality
+                    </h4>
                     <div className="grid grid-cols-2 gap-3">
                       {[
                         { id: 'empathetic', label: 'Supportive', icon: Heart, color: 'text-pink-400' },
@@ -4394,27 +5031,14 @@ function NourishIQ() {
                     <Save size={20} className="group-hover:scale-110 transition-transform" /> 
                     Save Changes
                   </button>
-                </div>
 
-                {/* AI Personality Section */}
-                <div className="pt-8 border-t border-white/5 space-y-4">
-                  <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">AI Personality</h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    {(['empathetic', 'strict', 'scientific', 'playful'] as const).map((p) => (
-                      <button
-                        key={p}
-                        onClick={() => setProfile(prev => prev ? {...prev, aiPersonality: p} : null)}
-                        className={cn(
-                          "px-4 py-3 rounded-2xl text-sm font-bold capitalize transition-all border",
-                          profile?.aiPersonality === p 
-                            ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400" 
-                            : "bg-slate-950/50 border-white/5 text-slate-400 hover:border-white/10"
-                        )}
-                      >
-                        {p}
-                      </button>
-                    ))}
-                  </div>
+                  <button 
+                    onClick={() => auth.signOut()}
+                    className="w-full py-4 bg-slate-900 border border-white/5 text-slate-400 rounded-2xl font-bold text-sm hover:bg-slate-800 hover:text-white transition-all flex items-center justify-center gap-2 mt-4"
+                  >
+                    <LogOut size={18} />
+                    Sign Out
+                  </button>
                 </div>
 
                 {/* Feedback Section */}
@@ -4574,63 +5198,75 @@ function NourishIQ() {
 
       {/* Bottom Navigation */}
       <motion.nav 
-        initial={{ y: 100 }}
-        animate={{ y: 0 }}
-        className="fixed bottom-0 left-0 right-0 max-w-md mx-auto glass-panel border-t border-white/5 px-4 py-3 z-30"
+        initial={{ y: 20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        className="fixed bottom-4 left-4 right-4 max-w-sm mx-auto z-[100]"
       >
-        <div className="flex justify-around items-center relative">
+        <div className="relative group flex justify-between items-center bg-slate-950/95 backdrop-blur-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-white/10 rounded-[2rem] px-2 py-2 overflow-visible">
+          <div className="absolute inset-0 bg-gradient-to-t from-emerald-500/5 to-transparent pointer-events-none rounded-[2rem]" />
           {[
             { id: 'dashboard', icon: Activity, label: 'Home' },
             { id: 'logs', icon: History, label: 'Logs' },
             { id: 'community', icon: Users, label: 'Social' },
-            { id: 'habits', icon: CheckCircle2, label: 'Habits' },
-            { id: 'achievements', icon: Trophy, label: 'Awards' },
-            { id: 'chat', icon: Brain, label: 'NORI AI' },
+            { id: 'habits', icon: CheckCircle2, label: 'Habit' },
+            { id: 'achievements', icon: Trophy, label: 'Award' },
+            { id: 'chat', icon: Brain, label: 'AI' }
           ].map((tab, i) => (
             <React.Fragment key={tab.id}>
-              {i === 2 && (
-                <motion.button 
-                  whileHover={{ scale: 1.1, rotate: 90 }}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={() => startCamera()} 
-                  className="absolute -top-12 left-1/2 -translate-x-1/2 w-14 h-14 bg-gradient-to-br from-emerald-400 to-teal-600 text-white rounded-2xl flex items-center justify-center shadow-xl shadow-emerald-500/30 transform transition-all border-4 border-[#020617]"
-                >
-                  <Plus size={32} strokeWidth={3} />
-                </motion.button>
-              )}
+              {i === 3 && <div className="w-12 h-10 flex-shrink-0" />}
               <button
                 onClick={() => setActiveTab(tab.id as any)}
-                className="flex flex-col items-center gap-1 group relative py-1"
+                className="flex flex-col items-center flex-1 min-w-0 group relative py-1 z-10"
               >
                 <div className={cn(
-                  "w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300",
+                  "w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-500 relative",
                   activeTab === tab.id 
-                    ? "text-emerald-400" 
+                    ? "text-emerald-400 bg-emerald-500/10" 
                     : "text-slate-500 hover:text-slate-300"
                 )}>
-                  <tab.icon size={22} strokeWidth={activeTab === tab.id ? 2.5 : 2} />
                   {activeTab === tab.id && (
                     <motion.div 
-                      layoutId="nav-pill"
-                      className="absolute inset-0 bg-emerald-500/10 blur-lg rounded-full -z-10"
+                      layoutId="tab-active-bg"
+                      className="absolute inset-0 bg-emerald-500/10 rounded-xl border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
                     />
                   )}
+                  <tab.icon size={18} className={cn("relative z-10", activeTab === tab.id && "drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]")} strokeWidth={2.5} />
                 </div>
                 <span className={cn(
-                  "text-[8px] font-bold uppercase tracking-widest transition-all duration-300",
-                  activeTab === tab.id ? "text-emerald-400 scale-110" : "text-slate-600"
+                  "text-[6px] font-black uppercase tracking-widest transition-all duration-500 truncate w-full text-center px-1",
+                  activeTab === tab.id ? "text-emerald-400 opacity-100" : "text-slate-600 opacity-60"
                 )}>
                   {tab.label}
                 </span>
                 {activeTab === tab.id && (
                   <motion.div 
-                    layoutId="nav-dot"
+                    layoutId="tab-underline"
                     className="absolute -bottom-1 w-1 h-1 bg-emerald-400 rounded-full"
                   />
                 )}
               </button>
             </React.Fragment>
           ))}
+
+          {/* Center Float Button */}
+          <motion.div
+            className="absolute -top-7 left-1/2 -translate-x-1/2 z-30"
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+          >
+            <motion.button 
+              whileHover={{ scale: 1.1, y: -2 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => startCamera()} 
+              className="w-16 h-16 bg-emerald-500 text-slate-950 rounded-[1.75rem] flex items-center justify-center shadow-[0_10px_30px_rgba(16,185,129,0.5)] transform transition-all border-4 border-[#020617] relative group"
+            >
+              <Plus size={32} strokeWidth={3} className="group-hover:rotate-90 transition-transform duration-500" />
+              <div className="absolute inset-0 bg-white/20 rounded-[1.75rem] opacity-0 group-active:opacity-100 transition-opacity" />
+              
+              {/* Outer Glow */}
+              <div className="absolute inset-x-0 -bottom-2 h-4 bg-emerald-500 blur-2xl opacity-20 group-hover:opacity-40 transition-opacity" />
+            </motion.button>
+          </motion.div>
         </div>
       </motion.nav>
 
@@ -4643,12 +5279,20 @@ function NourishIQ() {
                 <X size={24} />
               </button>
               <span className="font-display font-bold">Analyze Meal</span>
-              <button 
-                onClick={switchCamera}
-                className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all"
-              >
-                <RefreshCw size={20} />
-              </button>
+              <div className="flex gap-2">
+                <button 
+                  onClick={toggleTorch}
+                  className={cn("w-10 h-10 rounded-full flex items-center justify-center transition-all", torchEnabled ? "bg-yellow-500/50" : "bg-white/10 hover:bg-white/20")}
+                >
+                  <Zap size={20} />
+                </button>
+                <button 
+                  onClick={switchCamera}
+                  className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all"
+                >
+                  <RefreshCw size={20} />
+                </button>
+              </div>
             </div>
             
             <div className="flex-1 relative overflow-hidden flex items-center justify-center">
@@ -4661,6 +5305,18 @@ function NourishIQ() {
                   cameraFacingMode === 'user' && "scale-x-[-1]"
                 )} 
               />
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-4">
+                <input 
+                  type="range" 
+                  min="1" 
+                  max="5" 
+                  step="0.5" 
+                  value={zoomLevel} 
+                  onChange={(e) => setZoom(parseFloat(e.target.value))}
+                  className="h-32 accent-white rotate-180"
+                  style={{ writingMode: 'vertical-lr' }}
+                />
+              </div>
               <div className="absolute inset-0 border-[40px] border-black/40 pointer-events-none flex items-center justify-center">
                 <div className="w-64 h-64 border-2 border-white/50 rounded-3xl border-dashed relative">
                   <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 whitespace-nowrap bg-black/50 px-4 py-2 rounded-full backdrop-blur-md border border-white/10">
@@ -4707,19 +5363,19 @@ function NourishIQ() {
       <AnimatePresence>
         {showClassModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-6">
-            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="glass-card w-full max-w-md rounded-[2.5rem] p-8 border border-white/10 shadow-2xl relative">
-              <button onClick={() => setShowClassModal(false)} className="absolute top-6 right-6 text-slate-500 hover:text-white"><X size={24} /></button>
-              <h2 className="text-2xl font-display font-bold text-white mb-6">User Classes</h2>
+            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="tech-card w-full max-w-md border-white/10 relative">
+              <button onClick={() => setShowClassModal(false)} className="absolute top-6 right-6 text-slate-500 hover:text-white transition-colors"><X size={24} /></button>
+              <h2 className="text-2xl font-display font-black text-white mb-6 uppercase tracking-tight">User Classes</h2>
               <div className="space-y-4">
                 {USER_CLASSES.map((c) => {
                   const Icon = LucideIcons[c.icon as keyof typeof LucideIcons] as React.ElementType;
                   const isUnlocked = (profile?.points || 0) >= c.minPoints && (habits.reduce((max, h) => Math.max(max, h.streak), 0) >= c.minStreak);
                   return (
-                    <div key={c.id} className={cn("p-4 rounded-2xl border flex items-center gap-4", isUnlocked ? "bg-slate-900 border-emerald-500/20" : "bg-slate-950/50 border-white/5 opacity-60")}>
-                      <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center", c.bg, c.color)}><Icon size={24} /></div>
+                    <div key={c.id} className={cn("p-5 rounded-3xl border flex items-center gap-4 transition-all", isUnlocked ? "bg-slate-900/50 border-emerald-500/20 shadow-lg shadow-emerald-500/5" : "bg-slate-950/20 border-white/5 opacity-40 grayscale")}>
+                      <div className={cn("w-14 h-14 rounded-2xl flex items-center justify-center shadow-inner", c.bg, c.color)}><Icon size={28} /></div>
                       <div>
-                        <h4 className="font-bold text-white">{c.name}</h4>
-                        <p className="text-xs text-slate-400">{c.minPoints}+ Points • {c.minStreak}+ Day Streak</p>
+                        <h4 className="font-bold text-white text-base">{c.name}</h4>
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{c.minPoints}+ Points • {c.minStreak}+ Day Streak</p>
                       </div>
                     </div>
                   );
@@ -4759,11 +5415,12 @@ function NourishIQ() {
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
-              className="glass-card w-full max-w-sm p-6 rounded-[2rem] border border-white/10 shadow-2xl"
+              className="tech-card w-full max-w-sm border-white/10 group overflow-hidden"
             >
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold text-white">Share</h3>
-                <button onClick={() => setShareContent(null)} className="p-2 text-slate-400 hover:text-white bg-slate-800/50 rounded-full">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-[60px] rounded-full -mr-10 -mt-10 pointer-events-none" />
+              <div className="flex justify-between items-center mb-6 relative z-10">
+                <h3 className="text-xl font-display font-black text-white uppercase tracking-tight">Share</h3>
+                <button onClick={() => setShareContent(null)} className="p-2 text-slate-500 hover:text-white bg-white/5 rounded-xl transition-colors">
                   <X size={20} />
                 </button>
               </div>
@@ -4796,7 +5453,7 @@ function NourishIQ() {
                 </button>
 
                 <div className="pt-2">
-                  <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 ml-2">Send in Private Message</h4>
+                  <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 ml-2">Send in Inbox</h4>
                   {privateChats.length > 0 ? (
                     <div className="space-y-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
                       {privateChats.map(chat => (
