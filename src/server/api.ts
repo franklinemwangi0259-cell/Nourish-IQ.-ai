@@ -1,6 +1,6 @@
 import { Router } from "express";
-import * as geminiBackend from "../lib/gemini.backend";
-import * as webauthnBackend from "../lib/webauthn.backend";
+import * as geminiBackend from "../lib/gemini.backend.ts";
+import * as webauthnBackend from "../lib/webauthn.backend.ts";
 
 export const apiRouter = Router();
 

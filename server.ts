@@ -2,7 +2,7 @@ import express from "express";
 import http from "http";
 import path from "path";
 import fs from "fs";
-import { apiRouter } from "./src/server/api";
+import { apiRouter } from "./src/server/api.ts";
 
 async function startServer() {
   const app = express();
