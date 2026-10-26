@@ -1,5 +1,6 @@
 {
-  "name": "Nourish IQ",
-  "description": "AI-powered multimodal nutritional and habit tracking system with real-time analysis and a smart chatbot companion.",
-  "requestFramePermissions": ["camera", "microphone"]
+  "name": "Nourish IQ | Smart AI Nutrition Companion",
+  "description": "Premium AI nutritional and habit intelligence platform. Features computer vision for meal scanning, search-grounded AI advice, and the intelligent companion NORI. Optimized for production on Google Cloud.",
+  "requestFramePermissions": ["camera", "microphone", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

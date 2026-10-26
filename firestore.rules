@@ -1,70 +1,9 @@
-// ===============================================================
-// Assumed Data Model
-// ===============================================================
-//
-// Collection: users
-// Document ID: {uid}
-// Fields:
-//   - uid: string (required)
-//   - email: string (required)
-//   - displayName: string (optional)
-//   - photoURL: string (optional, url)
-//   - targetCalories: number (optional)
-//   - targetProtein: number (optional)
-//   - targetCarbs: number (optional)
-//   - targetFat: number (optional)
-//   - targetWeight: number (optional)
-//   - targetBodyFat: number (optional)
-//   - waterIntakeGoal: number (optional)
-//   - points: number (optional)
-//   - achievements: list (optional)
-//   - badges: list (optional)
-//   - class: string (optional)
-//   - aiPersonality: string (optional)
-//   - friends: list (optional)
-//   - friendRequests: list (optional)
-//   - hasCompletedOnboarding: bool (optional)
-//   - role: string (optional)
-//
-// Collection: users/{uid}/foodLogs
-// Document ID: {logId}
-// Fields:
-//   - uid: string (required)
-//   - name: string (required)
-//   - calories: number (required)
-//   - protein: number (required)
-//   - carbs: number (required)
-//   - fat: number (required)
-//   - imageUrl: string (optional, url)
-//   - timestamp: timestamp (required)
-//   - vitamins: list (optional)
-//   - isHealthy: bool (optional)
-//   - healthReason: string (optional)
-//   - mood: string (optional)
-//   - energy: number (optional)
-//
-// Collection: users/{uid}/habits
-// Document ID: {habitId}
-// Fields:
-//   - uid: string (required)
-//   - name: string (required)
-//   - completed: bool (required)
-//   - streak: number (required)
-//   - icon: string (required)
-//   - lastUpdated: timestamp (optional)
-//   - reminderTime: string (optional)
-//   - skippedDates: list (optional)
-//   - skipReasons: map (optional)
-//   - order: number (optional)
-//
-// ===============================================================
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     // ===============================================================
-    // Helper Functions
+    // Global Helper Functions
     // ===============================================================
     function isAuthenticated() {
       return request.auth != null;
@@ -74,248 +13,122 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    function isDocOwner() {
-      return isAuthenticated() && request.auth.uid == resource.data.uid;
-    }
-
-    function uidUnchanged() {
-      return !('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid;
-    }
-
-    function isValidEmail(email) {
-      return email is string && (email == "" || email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"));
-    }
-
-    function isValidUrl(url) {
-      return url is string && url.size() < 2000 && (url.matches("^https://.*") || url.matches("^http://.*"));
-    }
-
-    function isValidImage(img) {
-      return img is string && img.size() < 1048576 && (img.matches("^https://.*") || img.matches("^http://.*") || img.matches("^data:image/.*"));
-    }
-
     function isAdmin() {
-      return isAuthenticated() &&
-        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'admin') ||
-          (request.auth.token.email == "franklinemwangi0259@gmail.com" && request.auth.token.email_verified == true));
+      return isAuthenticated() && (
+        request.auth.token.email == "franklinemwangi0259@gmail.com" || 
+        request.auth.token.email == "frank001@gmail.com"
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
     }
 
     // ===============================================================
-    // Domain Validators
+    // Collection: users
     // ===============================================================
-    function isRecent(time) {
-      return time is timestamp &&
-             time <= request.time &&
-             time >= request.time - duration.value(5, 'm');
-    }
-
-    function fieldUnchanged(field) {
-      return !(field in request.resource.data) || request.resource.data[field] == resource.data[field];
-    }
-
-    function isValidUser(data) {
-      return data.keys().hasOnly(['uid', 'email', 'displayName', 'photoURL', 'targetCalories', 'targetProtein', 'targetCarbs', 'targetFat', 'targetWeight', 'targetBodyFat', 'waterIntakeGoal', 'points', 'achievements', 'badges', 'class', 'aiPersonality', 'friends', 'friendRequests', 'hasCompletedOnboarding', 'role']) &&
-             data.keys().hasAll(['uid', 'email']) &&
-             data.uid == request.auth.uid &&
-             isValidEmail(data.email) &&
-             (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 200)) &&
-             (!('photoURL' in data) || isValidUrl(data.photoURL)) &&
-             (!('targetCalories' in data) || (data.targetCalories is number && data.targetCalories >= 0 && data.targetCalories < 20000)) &&
-             (!('targetProtein' in data) || (data.targetProtein is number && data.targetProtein >= 0 && data.targetProtein < 5000)) &&
-             (!('targetCarbs' in data) || (data.targetCarbs is number && data.targetCarbs >= 0 && data.targetCarbs < 5000)) &&
-             (!('targetFat' in data) || (data.targetFat is number && data.targetFat >= 0 && data.targetFat < 5000)) &&
-             (!('targetWeight' in data) || (data.targetWeight is number && data.targetWeight >= 0 && data.targetWeight < 1000)) &&
-             (!('targetBodyFat' in data) || (data.targetBodyFat is number && data.targetBodyFat >= 0 && data.targetBodyFat < 100)) &&
-             (!('waterIntakeGoal' in data) || (data.waterIntakeGoal is number && data.waterIntakeGoal >= 0 && data.waterIntakeGoal < 20000)) &&
-             (!('points' in data) || (data.points is number && data.points >= 0)) &&
-             (!('achievements' in data) || (data.achievements is list && data.achievements.size() < 1000)) &&
-             (!('badges' in data) || (data.badges is list && data.badges.size() < 1000)) &&
-             (!('class' in data) || (data.class is string && data.class in ['amateur', 'novice', 'beginner', 'intermediate', 'advanced', 'master'])) &&
-             (!('aiPersonality' in data) || (data.aiPersonality is string && data.aiPersonality.size() < 50)) &&
-             (!('friends' in data) || (data.friends is list && data.friends.size() < 5000)) &&
-             (!('friendRequests' in data) || (data.friendRequests is list && data.friendRequests.size() < 5000)) &&
-             (!('hasCompletedOnboarding' in data) || (data.hasCompletedOnboarding is bool)) &&
-             (!('role' in data) || data.role in ['user', 'admin']);
-    }
-
-    function isValidPublicProfile(data) {
-      return data.keys().hasOnly(['uid', 'displayName', 'photoURL', 'points', 'achievements', 'badges', 'class', 'friends']) &&
-             data.keys().hasAll(['uid', 'displayName', 'photoURL']) &&
-             data.uid == request.auth.uid &&
-             data.displayName is string && data.displayName.size() < 200 &&
-             isValidUrl(data.photoURL) &&
-             (!('points' in data) || (data.points is number && data.points >= 0)) &&
-             (!('achievements' in data) || (data.achievements is list)) &&
-             (!('badges' in data) || (data.badges is list)) &&
-             (!('class' in data) || (data.class is string && data.class in ['amateur', 'novice', 'beginner', 'intermediate', 'advanced', 'master'])) &&
-             (!('friends' in data) || (data.friends is list));
-    }
-
-    function isValidCommunityMessage(data) {
-      return data.keys().hasOnly(['uid', 'displayName', 'photoURL', 'content', 'timestamp']) &&
-             data.keys().hasAll(['uid', 'content', 'timestamp']) &&
-             data.uid == request.auth.uid &&
-             data.content is string && data.content.size() >= 0 && data.content.size() < 10000 &&
-             data.timestamp is timestamp &&
-             (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 200)) &&
-             (!('photoURL' in data) || isValidUrl(data.photoURL));
-    }
-
-    function isValidFoodLog(data) {
-      return data.keys().hasOnly(['uid', 'name', 'calories', 'protein', 'carbs', 'fat', 'timestamp', 'imageUrl', 'vitamins', 'isHealthy', 'healthReason', 'mood', 'energy']) &&
-             data.keys().hasAll(['uid', 'name', 'calories', 'protein', 'carbs', 'fat', 'timestamp']) &&
-             data.uid == request.auth.uid &&
-             data.name is string && data.name.size() >= 0 && data.name.size() < 1000 &&
-             data.calories is number && data.calories >= 0 && data.calories < 100000 &&
-             data.protein is number && data.protein >= 0 && data.protein < 100000 &&
-             data.carbs is number && data.carbs >= 0 && data.carbs < 100000 &&
-             data.fat is number && data.fat >= 0 && data.fat < 100000 &&
-             (!('imageUrl' in data) || isValidImage(data.imageUrl)) &&
-             (!('vitamins' in data) || (data.vitamins is list && data.vitamins.size() < 100)) &&
-             (!('isHealthy' in data) || (data.isHealthy is bool)) &&
-             (!('healthReason' in data) || (data.healthReason is string && data.healthReason.size() < 5000)) &&
-             (!('mood' in data) || (data.mood is string && data.mood.size() < 50)) &&
-             (!('energy' in data) || (data.energy is number && data.energy >= 1 && data.energy <= 5));
-    }
-
-    function isValidHabit(data) {
-      return data.keys().hasOnly(['uid', 'name', 'completed', 'streak', 'icon', 'lastUpdated', 'reminderTime', 'skippedDates', 'skipReasons', 'order', 'completionHistory']) &&
-             data.keys().hasAll(['uid', 'name', 'completed', 'streak', 'icon']) &&
-             data.uid == request.auth.uid &&
-             data.name is string && data.name.size() >= 0 && data.name.size() < 500 &&
-             data.completed is bool &&
-             data.streak is number && data.streak >= 0 && data.streak < 100000 &&
-             data.icon is string && data.icon.size() < 100 &&
-             (!('lastUpdated' in data) || (data.lastUpdated is timestamp)) &&
-             (!('reminderTime' in data) || (data.reminderTime is string && data.reminderTime.matches("^\\d{2}:\\d{2}$"))) &&
-             (!('skippedDates' in data) || (data.skippedDates is list && data.skippedDates.size() < 5000)) &&
-             (!('skipReasons' in data) || (data.skipReasons is map && data.skipReasons.size() < 5000)) &&
-             (!('order' in data) || (data.order is number)) &&
-             (!('completionHistory' in data) || (data.completionHistory is list && data.completionHistory.size() < 5000));
-    }
-
-    function isValidAIChatMessage(data) {
-      return data.keys().hasOnly(['role', 'content', 'timestamp', 'feedback']) &&
-             data.keys().hasAll(['role', 'content', 'timestamp']) &&
-             data.role in ['user', 'model'] &&
-             data.content is string && data.content.size() >= 0 && data.content.size() < 50000 &&
-             data.timestamp is timestamp &&
-             (!('feedback' in data) || data.feedback in ['positive', 'negative']);
-    }
-
-    function isValidAIFeedback(data) {
-      return data.keys().hasOnly(['uid', 'messageContent', 'feedback', 'timestamp']) &&
-             data.keys().hasAll(['uid', 'messageContent', 'feedback', 'timestamp']) &&
-             data.uid == request.auth.uid &&
-             data.messageContent is string && data.messageContent.size() >= 0 && data.messageContent.size() < 50000 &&
-             data.feedback in ['positive', 'negative'] &&
-             data.timestamp is timestamp;
-    }
-
-    function isValidCommunityReport(data) {
-      return data.keys().hasOnly(['reporterUid', 'messageId', 'reason', 'timestamp', 'status', 'messageContent', 'messageAuthorUid']) &&
-             data.keys().hasAll(['reporterUid', 'messageId', 'reason', 'timestamp', 'status']) &&
-             data.reporterUid == request.auth.uid &&
-             data.messageId is string && data.messageId.size() > 0 &&
-             data.reason is string && data.reason.size() > 0 && data.reason.size() < 2000 &&
-             data.timestamp is timestamp &&
-             data.status == 'pending' &&
-             (!('messageContent' in data) || (data.messageContent is string && data.messageContent.size() < 10000)) &&
-             (!('messageAuthorUid' in data) || (data.messageAuthorUid is string && data.messageAuthorUid.size() < 200));
-    }
-
-    function isValidPrivateChat(data) {
-      return data.keys().hasOnly(['participants', 'updatedAt', 'lastMessage', 'lastMessageTimestamp']) &&
-             data.keys().hasAll(['participants', 'updatedAt']) &&
-             data.participants is list &&
-             data.participants.size() == 2 &&
-             request.auth.uid in data.participants &&
-             data.updatedAt is timestamp &&
-             (!('lastMessage' in data) || (data.lastMessage is string && data.lastMessage.size() < 10000)) &&
-             (!('lastMessageTimestamp' in data) || (data.lastMessageTimestamp is timestamp));
-    }
-
-    function isValidPrivateMessage(data) {
-      return data.keys().hasOnly(['senderUid', 'content', 'timestamp']) &&
-             data.keys().hasAll(['senderUid', 'content', 'timestamp']) &&
-             data.senderUid == request.auth.uid &&
-             data.content is string && data.content.size() >= 0 && data.content.size() < 10000 &&
-             data.timestamp is timestamp;
-    }
-
-    function isValidFriendRequest(data) {
-      return data.keys().hasOnly(['senderId', 'receiverId', 'status', 'timestamp']) &&
-             data.keys().hasAll(['senderId', 'receiverId', 'status', 'timestamp']) &&
-             data.senderId == request.auth.uid &&
-             data.status in ['pending', 'accepted'] &&
-             data.timestamp is timestamp;
-    }
-
-    // ===============================================================
-    // Rules
-    // ===============================================================
-
     match /users/{userId} {
-      allow read: if isOwner(userId);
-      allow create: if isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.get('role', 'user') == 'user' || isAdmin());
-      allow update: if isOwner(userId) && isValidUser(request.resource.data) && fieldUnchanged('uid') && (fieldUnchanged('role') || isAdmin());
+      allow read, write: if isOwner(userId) || isAdmin();
+
+      match /biometrics/{credentialId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
 
       match /foodLogs/{logId} {
-        allow read: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidFoodLog(request.resource.data);
-        allow update: if isOwner(userId) && isValidFoodLog(request.resource.data) && fieldUnchanged('uid') && fieldUnchanged('timestamp');
-        allow delete: if isOwner(userId);
+        allow read, write: if isOwner(userId) || isAdmin();
       }
 
       match /habits/{habitId} {
-        allow read: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidHabit(request.resource.data);
-        allow update: if isOwner(userId) && isValidHabit(request.resource.data) && fieldUnchanged('uid');
-        allow delete: if isOwner(userId);
+        allow read, write: if isOwner(userId) || isAdmin();
       }
 
       match /aiChatMessages/{messageId} {
-        allow read: if isOwner(userId);
-        allow write: if isOwner(userId) && isValidAIChatMessage(request.resource.data);
+        allow read, write: if isOwner(userId) || isAdmin();
       }
     }
 
-    match /users_public {
+    // ===============================================================
+    // Collection: users_public
+    // ===============================================================
+    match /users_public/{userId} {
       allow read: if isAuthenticated();
-      match /{userId} {
-        allow read: if isAuthenticated();
-        allow create, update: if isOwner(userId) && isValidPublicProfile(request.resource.data);
-      }
+      allow create, update: if isOwner(userId) || isAdmin();
     }
 
+    // ===============================================================
+    // Collection: communityMessages
+    // ===============================================================
     match /communityMessages/{messageId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isValidCommunityMessage(request.resource.data);
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
       allow delete: if isAuthenticated() && (resource.data.uid == request.auth.uid || isAdmin());
     }
 
+    // ===============================================================
+    // Collection: aiFeedback
+    // ===============================================================
     match /aiFeedback/{feedbackId} {
-      allow create: if isAuthenticated() && isValidAIFeedback(request.resource.data);
+      allow create: if isAuthenticated();
       allow read: if isAdmin();
     }
 
+    // ===============================================================
+    // Collection: communityReports
+    // ===============================================================
     match /communityReports/{reportId} {
-      allow create: if isAuthenticated() && isValidCommunityReport(request.resource.data);
+      allow create: if isAuthenticated();
       allow read, update: if isAdmin();
     }
 
-    match /friendRequests/{requestId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isValidFriendRequest(request.resource.data);
-      allow update: if isAuthenticated() && resource.data.receiverId == request.auth.uid && request.resource.data.status == 'accepted' && fieldUnchanged('senderId') && fieldUnchanged('receiverId');
-      allow delete: if isAuthenticated() && (resource.data.senderId == request.auth.uid || resource.data.receiverId == request.auth.uid);
+    // ===============================================================
+    // Collection: system
+    // ===============================================================
+    match /system/{docId} {
+      allow read: if true;
+      allow create, update: if isAuthenticated() && docId == 'community_challenge';
+      allow write: if isAdmin();
     }
 
+    // ===============================================================
+    // Collection: test (Used for connection validation)
+    // ===============================================================
+    match /test/{docId} {
+      allow read: if true;
+    }
+
+
+    // ===============================================================
+    // Collection: friendRequests
+    // ===============================================================
+    match /friendRequests/{requestId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.senderId == request.auth.uid;
+      allow update: if isAuthenticated() && (
+        resource.data.receiverId == request.auth.uid || 
+        resource.data.senderId == request.auth.uid
+      );
+      allow delete: if isAuthenticated() && (
+        resource.data.senderId == request.auth.uid || 
+        resource.data.receiverId == request.auth.uid
+      );
+    }
+
+    // ===============================================================
+    // Collection: chats
+    // ===============================================================
     match /chats/{chatId} {
       allow read: if isAuthenticated() && request.auth.uid in resource.data.participants;
-      allow create: if isAuthenticated() && isValidPrivateChat(request.resource.data);
-      allow update: if isAuthenticated() && request.auth.uid in resource.data.participants && isValidPrivateChat(request.resource.data);
+      allow create: if isAuthenticated() && request.auth.uid in request.resource.data.participants;
+      allow update: if isAuthenticated() && (
+        request.auth.uid in resource.data.participants && 
+        request.auth.uid in request.resource.data.participants
+      );
+      allow delete: if isAdmin();
 
       match /messages/{messageId} {
         allow read: if isAuthenticated() && 
@@ -324,13 +137,15 @@ service cloud.firestore {
         allow create: if isAuthenticated() && 
           exists(/databases/$(database)/documents/chats/$(chatId)) &&
           request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants && 
-          isValidPrivateMessage(request.resource.data);
+          request.resource.data.senderUid == request.auth.uid;
         allow delete: if isAuthenticated() && resource.data.senderUid == request.auth.uid;
       }
     }
 
+    // ===============================================================
+    // Collection: mail
+    // ===============================================================
     match /mail/{mailId} {
-      // Allow users to trigger emails to themselves (e.g., welcome emails)
       allow create: if isAuthenticated() && request.resource.data.to == request.auth.token.email;
       allow read: if false;
     }

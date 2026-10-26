@@ -8,10 +8,54 @@ export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
     plugins: [
+      {
+        name: 'vite-hmr-ws-stub',
+        enforce: 'pre',
+        transformIndexHtml: {
+          order: 'pre',
+          handler() {
+            return [
+              {
+                tag: 'script',
+                attrs: { type: 'text/javascript' },
+                children: `
+                  (function() {
+                    var OrigWS = window.WebSocket;
+                    if (OrigWS) {
+                      window.WebSocket = function(url, protocols) {
+                        if (protocols === 'vite-hmr' || (typeof url === 'string' && (url.indexOf('vite-hmr') !== -1 || url.indexOf('@vite') !== -1))) {
+                          var stub = new EventTarget();
+                          stub.readyState = 1;
+                          stub.url = url;
+                          stub.protocol = 'vite-hmr';
+                          stub.send = function() {};
+                          stub.close = function() {};
+                          stub.addEventListener = EventTarget.prototype.addEventListener.bind(stub);
+                          stub.removeEventListener = EventTarget.prototype.removeEventListener.bind(stub);
+                          stub.dispatchEvent = EventTarget.prototype.dispatchEvent.bind(stub);
+                          setTimeout(function() { stub.dispatchEvent(new Event('open')); }, 0);
+                          return stub;
+                        }
+                        return new OrigWS(url, protocols);
+                      };
+                      window.WebSocket.prototype = OrigWS.prototype;
+                      window.WebSocket.CONNECTING = 0;
+                      window.WebSocket.OPEN = 1;
+                      window.WebSocket.CLOSING = 2;
+                      window.WebSocket.CLOSED = 3;
+                    }
+                  })();
+                `,
+                injectTo: 'head-prepend'
+              }
+            ];
+          }
+        }
+      },
       react(), 
       tailwindcss(),
       VitePWA({
-        registerType: 'autoUpdate',
+        registerType: 'prompt',
         devOptions: {
           enabled: true
         },
@@ -22,12 +66,12 @@ export default defineConfig(({mode}) => {
           theme_color: '#10b981',
           icons: [
             {
-              src: '/logo.png',
+              src: 'https://i.postimg.cc/NM8Pdy2b/logo.png',
               sizes: '192x192',
               type: 'image/png'
             },
             {
-              src: '/logo.png',
+              src: 'https://i.postimg.cc/NM8Pdy2b/logo.png',
               sizes: '512x512',
               type: 'image/png'
             }
@@ -78,9 +122,11 @@ export default defineConfig(({mode}) => {
       },
     },
     server: {
+      host: '0.0.0.0',
+      port: 3000,
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
-      hmr: process.env.DISABLE_HMR !== 'true',
+      hmr: false,
     },
   };
 });

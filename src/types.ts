@@ -43,6 +43,7 @@ export interface UserProfile {
   friends?: string[];
   friendRequests?: string[];
   hasCompletedOnboarding?: boolean;
+  role?: 'admin' | 'user';
 }
 
 export interface PublicProfile {

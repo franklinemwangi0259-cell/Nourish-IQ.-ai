@@ -77,4 +77,18 @@
     0%, 100% { transform: translateY(0); }
     50% { transform: translateY(-10px); }
   }
+
+  /* Mobile Safe Area and Touch Optimizations */
+  .safe-top {
+    padding-top: max(env(safe-area-inset-top), 0.75rem);
+  }
+
+  .safe-bottom {
+    padding-bottom: max(env(safe-area-inset-bottom), 1rem);
+  }
+
+  /* Prevent awkward double-tap zoom on mobile buttons */
+  button, a {
+    touch-action: manipulation;
+  }
 }

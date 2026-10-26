@@ -8,14 +8,14 @@
   "theme_color": "#10b981",
   "icons": [
     {
-      "src": "https://api.dicebear.com/7.x/shapes/svg?seed=NourishIQ",
+      "src": "https://i.postimg.cc/NM8Pdy2b/logo.png",
       "sizes": "192x192",
-      "type": "image/svg+xml"
+      "type": "image/png"
     },
     {
-      "src": "https://api.dicebear.com/7.x/shapes/svg?seed=NourishIQ",
+      "src": "https://i.postimg.cc/NM8Pdy2b/logo.png",
       "sizes": "512x512",
-      "type": "image/svg+xml"
+      "type": "image/png"
     }
   ]
 }

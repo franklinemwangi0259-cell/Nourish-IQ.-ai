@@ -120,12 +120,41 @@
         "timestamp": { "type": "string", "format": "date-time" }
       },
       "required": ["role", "content", "timestamp"]
+    },
+    "TestConnection": {
+      "title": "Test Connection",
+      "description": "Probe document for verifying Firestore connectivity on boot",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string" }
+      }
+    },
+    "BiometricCredential": {
+      "title": "Biometric Credential",
+      "description": "Biometric authentication credentials (WebAuthn / Passkeys)",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "credentialID": { "type": "string" },
+        "publicKey": { "type": "string" },
+        "counter": { "type": "number" },
+        "deviceType": { "type": "string" },
+        "backedUp": { "type": "boolean" },
+        "transports": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "credentialID", "publicKey"]
     }
   },
   "firestore": {
     "/users/{uid}": {
       "schema": "UserProfile",
       "description": "User profile data"
+    },
+    "/users/{uid}/biometrics/{credentialId}": {
+      "schema": "BiometricCredential",
+      "description": "User biometric WebAuthn credentials"
     },
     "/users/{uid}/foodLogs/{logId}": {
       "schema": "FoodLog",
@@ -158,6 +187,10 @@
     "/chats/{chatId}/messages/{messageId}": {
       "schema": "PrivateMessage",
       "description": "Messages in a private chat"
+    },
+    "/test/{docId}": {
+      "schema": "TestConnection",
+      "description": "Probe path to validate Firestore connection on boot"
     }
   }
 }
