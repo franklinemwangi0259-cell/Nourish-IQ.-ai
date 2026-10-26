@@ -15,6 +15,14 @@ View your app in AI Studio: https://ai.studio/apps/c233af30-27a9-4cbc-b3eb-0fa1c
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Set `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+
+## Deploy to Vercel
+
+When deploying to Vercel (e.g. `https://nourish-iq-ai.vercel.app/`):
+1. Import the repository into Vercel.
+2. In your Vercel Project Dashboard, navigate to **Settings > Environment Variables**.
+3. Add **`GEMINI_API_KEY`** with your Google Gemini API key.
+4. Redeploy. All AI endpoints (`/api/gemini/*`) are automatically routed to the Vercel Serverless Function (`api/index.ts`).

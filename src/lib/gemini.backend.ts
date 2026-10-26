@@ -1,9 +1,15 @@
 import { GoogleGenAI, Type, ThinkingLevel, Modality } from "@google/genai";
 
 const getAI = () => {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey =
+    process.env.GEMINI_API_KEY ||
+    process.env.VITE_GEMINI_API_KEY ||
+    process.env.GOOGLE_GENAI_API_KEY;
+    
   if (!apiKey) {
-    throw new Error('GEMINI_API_KEY is not defined. Please check your environment variables in the Settings panel.');
+    throw new Error(
+      "GEMINI_API_KEY is not configured. On Vercel, please add GEMINI_API_KEY to Project Settings > Environment Variables."
+    );
   }
   return new GoogleGenAI({ 
     apiKey,
@@ -25,7 +31,11 @@ const withRetry = async <T>(fn: () => Promise<T>, maxRetries: number = 3): Promi
       return await fn();
     } catch (error: any) {
       lastError = error;
-      if (error.message?.includes('GEMINI_API_KEY') || error.message?.includes('API_KEY_INVALID')) {
+      if (
+        error.message?.includes('GEMINI_API_KEY') || 
+        error.message?.includes('API_KEY_INVALID') ||
+        error.message?.includes('API key')
+      ) {
         throw error;
       }
       console.warn(`AI call failed (attempt ${i + 1}/${maxRetries}). Retrying...`, error);
@@ -37,13 +47,13 @@ const withRetry = async <T>(fn: () => Promise<T>, maxRetries: number = 3): Promi
 };
 
 /**
- * Analyzes a food image using gemini-3.6-flash for high accuracy and fast multimodal recognition.
+ * Analyzes a food image using gemini-3.8-flash for high accuracy and multimodal recognition.
  */
 export const analyzeFoodImage = async (base64Image: string) => {
   return withRetry(async () => {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
+      model: "gemini-3.8-flash",
       contents: {
         parts: [
           {
@@ -78,7 +88,7 @@ export const analyzeFoodImage = async (base64Image: string) => {
       },
     });
 
-    return JSON.parse(response.text);
+    return JSON.parse(response.text || "{}");
   });
 };
 
@@ -115,12 +125,12 @@ Analyze both the food history and habit tracking data.
       },
     });
 
-    return response.text;
+    return response.text || "";
   });
 };
 
 /**
- * Complex nutrition and habit analysis using gemini-3.6-flash with HIGH thinking level.
+ * Complex nutrition and habit analysis using gemini-3.8-flash with HIGH thinking level.
  */
 export const getComplexNutritionAdvice = async (history: any[], habits: any[], query: string, userName?: string, personality: string = 'empathetic') => {
   return withRetry(async () => {
@@ -133,7 +143,7 @@ export const getComplexNutritionAdvice = async (history: any[], habits: any[], q
     };
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
+      model: "gemini-3.8-flash",
       contents: [
         {
           role: "user",
@@ -152,36 +162,36 @@ Break down your reasoning step-by-step.
       },
     });
 
-    return response.text;
+    return response.text || "";
   });
 };
 
 /**
- * Search-grounded nutrition info using gemini-3.6-flash.
+ * Search-grounded nutrition info using gemini-3.8-flash.
  */
 export const searchNutritionInfo = async (query: string) => {
   return withRetry(async () => {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
+      model: "gemini-3.8-flash",
       contents: query,
       config: {
         tools: [{ googleSearch: {} }]
       }
     });
 
-    return response.text;
+    return response.text || "";
   });
 };
 
 /**
- * Analyzes a recipe using gemini-3.6-flash.
+ * Analyzes a recipe using gemini-3.8-flash.
  */
 export const analyzeRecipe = async (ingredients: string) => {
   return withRetry(async () => {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
+      model: "gemini-3.8-flash",
       contents: [
         {
           role: "user",
@@ -209,7 +219,7 @@ export const analyzeRecipe = async (ingredients: string) => {
       },
     });
 
-    return JSON.parse(response.text);
+    return JSON.parse(response.text || "{}");
   });
 };
 
@@ -243,18 +253,18 @@ export const generateRecipeFromIngredients = async (ingredients: string) => {
       },
     });
 
-    return JSON.parse(response.text);
+    return JSON.parse(response.text || "{}");
   });
 };
 
 /**
- * Suggests a healthier "remix" of a meal using gemini-3.6-flash.
+ * Suggests a healthier "remix" of a meal using gemini-3.8-flash.
  */
 export const remixMeal = async (mealName: string, calories: number) => {
   return withRetry(async () => {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
+      model: "gemini-3.8-flash",
       contents: [
         {
           role: "user",
@@ -276,19 +286,24 @@ export const remixMeal = async (mealName: string, calories: number) => {
       },
     });
 
-    return JSON.parse(response.text);
+    return JSON.parse(response.text || "{}");
   });
 };
 
 /**
- * Converts text to speech using gemini-3.1-flash-tts-preview.
+ * Converts text to speech using gemini-3.8-flash-lite-tts.
  */
 export const generateSpeech = async (text: string) => {
   return withRetry(async () => {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-flash-tts-preview",
-      contents: [{ parts: [{ text: `Say clearly: ${text}` }] }],
+      model: "gemini-3.8-flash-lite-tts",
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: `Say clearly: ${text}` }],
+        },
+      ],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
@@ -333,7 +348,7 @@ export const generateNotifications = async () => {
       },
     });
 
-    return JSON.parse(response.text);
+    return JSON.parse(response.text || "[]");
   });
 };
 

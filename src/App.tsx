@@ -2717,15 +2717,16 @@ function NourishIQ() {
         analysis = await analyzeFoodImage(base64Image.split(',')[1]);
       } catch (aiError) {
         console.error("Analysis Error:", aiError);
-        if (aiError instanceof Error && aiError.message.includes('GEMINI_API_KEY')) {
+        const errMsg = aiError instanceof Error ? aiError.message : "Visual intelligence service error";
+        if (errMsg.includes('GEMINI_API_KEY') || errMsg.includes('Vercel') || errMsg.includes('API key')) {
           setGlobalError({
-            title: "API Key Missing",
-            message: "Meal scanning requires a Gemini API Key. Please ensure your environment is configured."
+            title: "AI Configuration Notice",
+            message: "Meal scanning requires GEMINI_API_KEY. On Vercel, please add GEMINI_API_KEY in your Project Settings > Environment Variables."
           });
         } else {
           setGlobalError({
             title: "Analysis Failed",
-            message: "My visual intelligence center is temporarily busy. Please try scanning again in a moment! 🥗"
+            message: `${errMsg}. Please try scanning again in a moment! 🥗`
           });
         }
         setIsAnalyzing(false);
@@ -3083,11 +3084,12 @@ function NourishIQ() {
           advice = await getNutritionAdvice(foodLogs.slice(0, 20), habits, content, profile?.displayName, profile?.aiPersonality);
         }
       } catch (aiError) {
-        if (aiError instanceof Error && aiError.message.includes('GEMINI_API_KEY')) {
-          advice = "⚠️ **API Key Missing**: It looks like the Gemini API Key hasn't been configured yet. AI features require an API key to function.";
+        console.error("AI Error:", aiError);
+        const errMsg = aiError instanceof Error ? aiError.message : "Synchronization issue with intelligence center";
+        if (errMsg.includes('GEMINI_API_KEY') || errMsg.includes('Vercel') || errMsg.includes('API key')) {
+          advice = `⚠️ **AI Configuration Notice**: ${errMsg}\n\n*Note for Vercel deployment*: Make sure **GEMINI_API_KEY** is configured in your Vercel Project Settings under **Environment Variables**.`;
         } else {
-          console.error("AI Error:", aiError);
-          advice = "I'm having a brief synchronization issue with my intelligence center. Could you please try asking that again in a moment? 🧠🔄";
+          advice = `I'm having a brief synchronization issue: ${errMsg}. Could you please try again in a moment? 🧠🔄`;
         }
       }
       
